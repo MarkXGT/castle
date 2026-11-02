@@ -46,9 +46,19 @@ class Game {
       side: i, faction: factions[i], bot: !!bots[i],
       gold: S.startGold, crystals: S.startCrystals, crystalT: 0, incomeT: 0,
       ult: 0, ultCd: 0, botT: 3 + i,
-      builder: { x: i === 0 ? 130 : S.world - 130, y: L.laneY, tx: null, ty: null, orders: [] },
-      stats: { kills: 0, lost: 0, bKills: 0, built: 0, gold: 0 }
+      shards: 0,
+      stats: { kills: 0, lost: 0, bKills: 0, built: 0, gold: 0, heroKills: 0, camps: 0 }
     }));
+    for (const p of this.players) {
+      const hd = DATA.heroes[p.faction];
+      hd.interval = ((hd.damage[0] + hd.damage[1]) / 2) / hd.dps;
+      p.hero = { id: 'h' + p.side, isHero: true, o: p.side, x: 0, y: 0, hp: hd.hp, mh: hd.hp, lv: 1, xp: 0, dead: false, rt: 0, cd: 0, skCd: 0,
+        stunU: 0, lastDmgT: -99, lastHit: -1, dx: 0, dy: 0, tgt: null, go: null, drumU: 0 };
+      this.placeHero(p);
+    }
+    this.neutrals = [];
+    this.camps = DATA.camps.map(c => ({ ...c, def: DATA.campTypes[c.type], respawnT: 0, aggro: null, alive: 0 }));
+    for (const c of this.camps) this.spawnCamp(c);
     this.castles = [0, 1].map(i => ({
       id: 'c' + i, o: i, hp: S.castleHp, max: S.castleHp,
       x: i === 0 ? L.castleX : S.world - L.castleX
@@ -90,7 +100,10 @@ class Game {
     const p = this.players[side];
     if (!c || typeof c.c !== 'string') return 'Неверная команда';
     switch (c.c) {
-      case 'move': return this.cmdMove(p, c);
+      case 'hmove': return this.cmdHeroMove(p, c);
+      case 'hgo': return this.cmdHeroGo(p, c);
+      case 'hatk': return this.cmdHeroAttack(p, c);
+      case 'hskill': return this.cmdHeroSkill(p);
       case 'repair': return this.cmdRepair(p, c);
       case 'build': return this.cmdBuild(p, c);
       case 'upgrade': return this.cmdUpgrade(p, c);
@@ -100,14 +113,6 @@ class Game {
       case 'ult': return this.cmdUlt(p);
     }
     return 'Неизвестная команда';
-  }
-
-  cmdMove(p, c) {
-    const x = +c.x, y = +c.y;
-    if (!isFinite(x) || !isFinite(y)) return 'Неверная точка';
-    const b = p.builder;
-    b.orders = []; b.tx = x; b.ty = y;
-    return null;
   }
 
   validateBuild(p, c) {
@@ -123,26 +128,19 @@ class Game {
     return null;
   }
 
-  // Заказы стоят в очереди: строитель подходит к клетке на buildRange; платёж и постройка — в момент прибытия.
   cmdBuild(p, c) {
     const err = this.validateBuild(p, c);
     if (err) return err;
-    const q = p.builder.orders;
-    const slot = c.slot | 0;
-    if (q.some(o => o.slot === slot)) return 'Клетка уже в очереди';
-    if (q.length >= 8) return 'Очередь заполнена';
-    q.push({ k: 'build', b: c.b, slot });
+    this.placeBuilding(p, c.b, c.slot | 0);
     return null;
   }
 
+  // Ремонт идёт постепенно, пока хватает золота: repairCostPerHp за HP
   cmdRepair(p, c) {
     const bd = this.myBuilding(p, c.id);
     if (!bd) return 'Нет такого здания';
     if (bd.hp >= bd.max) return 'Здание целое';
-    const q = p.builder.orders;
-    if (q.some(o => o.k === 'repair' && o.id === bd.id)) return 'Уже в очереди';
-    if (q.length >= 8) return 'Очередь заполнена';
-    q.push({ k: 'repair', id: bd.id });
+    bd.repair = true;
     return null;
   }
 
@@ -151,44 +149,6 @@ class Game {
     this.pay(p, def.cost);
     this.addBuilding(p.side, type, slot, def.cost.g || 0);
     p.stats.built++;
-  }
-
-  stepBuilder(p) {
-    const b = p.builder;
-    b.rep = false;
-    let tx = b.tx, ty = b.ty, reach = L.buildRange;
-    const order = b.orders[0];
-    let target = null;
-    if (order && order.k === 'repair') {
-      target = this.buildings.find(x => x.id === order.id && x.o === p.side);
-      if (!target || target.hp >= target.max) { b.orders.shift(); return; }
-      tx = target.x; ty = target.y; reach = S.repairRange;
-    } else if (order) {
-      const sp = slotPos(p.side, order.slot); tx = sp.x; ty = sp.y;
-    }
-    if (tx === null) return;
-    const dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy);
-    if (order && d <= reach) {
-      if (order.k === 'repair') { // ремонт идёт постепенно: золото за каждый HP
-        const amt = Math.min(S.repairRate * DT, target.max - target.hp);
-        const cost = amt * S.repairCostPerHp;
-        if (p.gold < cost) { this.msgs.push({ side: p.side, msg: 'Не хватает золота на ремонт' }); b.orders.shift(); return; }
-        p.gold -= cost; target.hp += amt; b.rep = true;
-        if (target.hp >= target.max - 0.01) { target.hp = target.max; b.orders.shift(); }
-        return;
-      }
-      b.orders.shift();
-      const err = this.validateBuild(p, order);
-      if (err) this.msgs.push({ side: p.side, msg: err });
-      else this.placeBuilding(p, order.b, order.slot);
-      return;
-    }
-    if (!order && d < 4) { b.tx = null; return; }
-    const stepLen = Math.min(d, L.builderSpeed * DT);
-    const nx = b.x + dx / d * stepLen, ny = b.y + dy / d * stepLen;
-    const minX = p.side === 0 ? 20 : S.world - BASE_MAX_X, maxX = p.side === 0 ? BASE_MAX_X : S.world - 20;
-    b.x = Math.max(minX, Math.min(maxX, nx)); b.y = Math.max(20, Math.min(L.worldH - 20, ny));
-    if (!order && Math.abs(b.x - nx) > 0.01) b.tx = null; // упёрся в границу зоны
   }
 
   addBuilding(o, type, slot, invested) {
@@ -231,6 +191,8 @@ class Game {
     for (const u of this.units) {
       if (u.o === o && u.hp > 0 && Math.abs(u.x - x) <= S.areaRadius) fn(u);
     }
+    const h = this.players[o].hero;
+    if (!h.dead && Math.abs(h.x - x) <= S.areaRadius) fn(h);
   }
 
   cmdAbility(p, c) {
@@ -244,7 +206,7 @@ class Game {
       const x = Math.max(0, Math.min(S.world, +c.x));
       if (!isFinite(x)) return 'Неверная область';
       this.pay(p, ab.cost);
-      this.inArea(p.side, x, u => { u.hp = Math.min(DATA.units[u.type].hp, u.hp + ab.amount); this.ev({ k: 'h', x: u.x, y: this.unitY(u) }); });
+      this.inArea(p.side, x, u => { u.hp = Math.min(this.maxHpOf(u), u.hp + ab.amount); this.ev({ k: 'h', x: u.x, y: this.unitY(u) }); });
       this.ev({ k: 'ring', x, o: p.side, c: '#4ade80' });
     } else if (ab.type === 'haste') {
       this.pay(p, ab.cost);
@@ -259,10 +221,10 @@ class Game {
     if (!it) return 'Нет такого предмета';
     if (!this.canPay(p, it.cost)) return 'Не хватает ресурсов';
     if (c.item === 'salve') {
-      const u = this.units.find(u => u.id === c.target && u.o === p.side && u.hp > 0);
-      if (!u) return 'Выберите своего юнита';
+      const u = c.target === 'h' + p.side ? (p.hero.dead ? null : p.hero) : this.units.find(u => u.id === c.target && u.o === p.side && u.hp > 0);
+      if (!u) return 'Выберите своего юнита или героя';
       this.pay(p, it.cost);
-      u.hp = Math.min(DATA.units[u.type].hp, u.hp + it.amount);
+      u.hp = Math.min(this.maxHpOf(u), u.hp + it.amount);
       this.ev({ k: 'h', x: u.x, y: this.unitY(u) });
     } else if (c.item === 'drum') {
       const x = Math.max(0, Math.min(S.world, +c.x));
@@ -308,12 +270,19 @@ class Game {
         if (p.crystalT >= S.crystalRegen) { p.crystals++; p.crystalT = 0; }
       } else p.crystalT = 0;
       p.ultCd = Math.max(0, p.ultCd - DT);
-      if (p.bot) this.botThink(p); else this.stepBuilder(p);
+      if (p.bot) { this.botThink(p); this.botHero(p); }
+      this.stepHero(p);
     }
 
     const count = [this.armyCount(0), this.armyCount(1)];
     for (const b of this.buildings) {
       b.cd = Math.max(0, b.cd - DT);
+      if (b.repair) {
+        const own = this.players[b.o];
+        const amt = Math.min(S.repairRate * DT, b.max - b.hp), cost = amt * S.repairCostPerHp;
+        if (own.gold < cost) { b.repair = false; this.msgs.push({ side: b.o, msg: 'Не хватает золота на ремонт' }); }
+        else { own.gold -= cost; b.hp += amt; if (b.hp >= b.max - 0.01) { b.hp = b.max; b.repair = false; } }
+      }
       const def = DATA.buildings[b.type];
       if (def.kind !== 'spawner') continue;
       b.spawnT = Math.max(0, b.spawnT - DT);
@@ -326,6 +295,7 @@ class Game {
 
     for (const b of this.buildings) if (DATA.buildings[b.type].kind === 'tower') this.actTower(b);
     for (const u of this.units) if (u.hp > 0) this.actUnit(u);
+    this.stepCamps();
     this.reap();
     if (this.over) return;
 
@@ -333,6 +303,194 @@ class Game {
       const a = this.castles[0].hp, b = this.castles[1].hp;
       this.finish(a === b ? -1 : (a > b ? 0 : 1), 'Время вышло: побеждает замок с большим здоровьем');
     }
+  }
+
+  // ---------- герои и нейтралы ----------
+  armorOf(e) {
+    if (e.isHero) return DATA.heroes[this.players[e.o].faction];
+    if (e.neutral) return DATA.neutrals[e.type];
+    return DATA.units[e.type];
+  }
+  maxHpOf(e) { return e.isHero ? e.mh : e.neutral ? DATA.neutrals[e.type].hp : DATA.units[e.type].hp; }
+  hurt(e, dmg, side) {
+    e.hp -= dmg; e.lastHit = side;
+    if (e.isHero) e.lastDmgT = this.t;
+  }
+  hostile(side, e) {
+    if (!e || e.hp <= 0) return false;
+    if (e.isHero) return !e.dead && e.o !== side;
+    if (e.neutral) return true;
+    return e.o !== side;
+  }
+  findEnt(id) {
+    if (typeof id === 'string') { const m = /^h([01])$/.exec(id); return m ? this.players[+m[1]].hero : null; }
+    return this.units.find(u => u.id === id) || this.neutrals.find(n => n.id === id) || null;
+  }
+  nearestHostile(side, from, reach) {
+    let best = null, bd = reach;
+    const test = e => { if (!this.hostile(side, e)) return; const d = Math.hypot(e.x - from.x, e.y - from.y); if (d <= bd) { bd = d; best = e; } };
+    for (const n of this.neutrals) test(n);
+    test(this.players[1 - side].hero);
+    for (const u of this.units) test(u);
+    return best;
+  }
+  placeHero(p) {
+    const h = p.hero;
+    h.x = (p.side === 0 ? L.castleX : S.world - L.castleX) + this.dir(p.side) * 90; h.y = L.laneY + (p.side === 0 ? 40 : -40);
+  }
+  addXp(p, xp) {
+    const h = p.hero;
+    h.xp += xp;
+    const lv = Math.min(S.maxLevel, 1 + Math.floor(h.xp / S.xpPerLevel));
+    while (h.lv < lv) { h.lv++; h.mh += S.hpPerLevel; if (!h.dead) h.hp += S.hpPerLevel; this.ev({ k: 'lvl', x: h.x, y: h.y }); }
+  }
+  heroDamage(h) {
+    const d = DATA.heroes[this.players[h.o].faction], bonus = (h.lv - 1) * S.dmgPerLevel;
+    return randInt(d.damage[0] + bonus, d.damage[1] + bonus);
+  }
+
+  cmdHeroMove(p, c) {
+    let dx = +c.dx || 0, dy = +c.dy || 0;
+    const len = Math.hypot(dx, dy);
+    if (len > 0) { dx /= len; dy /= len; }
+    p.hero.dx = dx; p.hero.dy = dy;
+    if (len > 0) { p.hero.tgt = null; p.hero.go = null; }
+    return null;
+  }
+  cmdHeroGo(p, c) {
+    const x = +c.x, y = +c.y;
+    if (!isFinite(x) || !isFinite(y)) return 'Неверная точка';
+    p.hero.go = { x, y }; p.hero.tgt = null;
+    return null;
+  }
+  cmdHeroAttack(p, c) {
+    const e = this.findEnt(c.id);
+    if (!this.hostile(p.side, e)) return 'Нет такой цели';
+    p.hero.tgt = c.id; p.hero.go = null;
+    return null;
+  }
+  cmdHeroSkill(p) {
+    const h = p.hero, sk = DATA.heroes[p.faction].skill;
+    if (h.dead) return 'Герой мёртв';
+    if (this.t < h.stunU) return 'Герой оглушён';
+    if (h.skCd > 0) return 'Навык перезаряжается';
+    if (!this.canPay(p, sk.cost)) return 'Не хватает золота';
+    const normal = (e, dmg) => { const a = this.armorOf(e); return dmg * DATA.damageTable.Normal[a.armorType] * 100 / (100 + 6 * a.armor); };
+    if (sk.type === 'bash') {
+      let t = h.tgt !== null ? this.findEnt(h.tgt) : null;
+      if (!this.hostile(p.side, t) || Math.hypot(t.x - h.x, t.y - h.y) > sk.range) t = this.nearestHostile(p.side, h, sk.range);
+      // герой/нейтрал важнее обычного юнита
+      const prio = [...this.neutrals, this.players[1 - p.side].hero].filter(e => this.hostile(p.side, e) && Math.hypot(e.x - h.x, e.y - h.y) <= sk.range);
+      if (prio.length && !(t && (t.isHero || t.neutral))) t = prio[0];
+      if (!t) return 'Нет цели рядом';
+      this.pay(p, sk.cost);
+      this.hurt(t, normal(t, sk.damage), p.side);
+      if (t.isHero || t.neutral) t.stunU = this.t + sk.stun;
+      this.ev({ k: 'nova', x: t.x, y: t.y, o: p.side, r: 40 });
+    } else {
+      const targets = [];
+      for (const e of [...this.units, ...this.neutrals, this.players[1 - p.side].hero]) if (this.hostile(p.side, e) && Math.hypot(e.x - h.x, e.y - h.y) <= sk.radius) targets.push(e);
+      if (!targets.length) return 'Нет целей рядом';
+      this.pay(p, sk.cost);
+      for (const e of targets) this.hurt(e, normal(e, sk.damage), p.side);
+      this.ev({ k: 'nova', x: h.x, y: h.y, o: p.side, r: sk.radius });
+    }
+    h.skCd = sk.cooldown;
+    return null;
+  }
+
+  stepHero(p) {
+    const h = p.hero, d = DATA.heroes[p.faction];
+    if (h.dead) { h.rt -= DT; if (h.rt <= 0) { h.dead = false; h.hp = h.mh; h.stunU = 0; this.placeHero(p); } return; }
+    h.cd -= DT; h.skCd = Math.max(0, h.skCd - DT);
+    if (this.t - h.lastDmgT >= S.heroRegenDelay) h.hp = Math.min(h.mh, h.hp + S.heroRegen * DT);
+    if (this.t < h.stunU) return;
+    const speed = d.speed * S.heroSpeedScale * DT;
+    const clampPos = () => { h.x = Math.max(20, Math.min(S.world - 20, h.x)); h.y = Math.max(20, Math.min(L.worldH - 20, h.y)); };
+    const moveTo = (tx, ty, stop) => {
+      const dx = tx - h.x, dy = ty - h.y, dist = Math.hypot(dx, dy);
+      if (dist <= stop) return true;
+      const st = Math.min(speed, dist - stop);
+      h.x += dx / dist * st; h.y += dy / dist * st; clampPos();
+      return false;
+    };
+    if (h.dx || h.dy) { h.x += h.dx * speed; h.y += h.dy * speed; clampPos(); return; }
+    let tgt = h.tgt !== null ? this.findEnt(h.tgt) : null;
+    if (h.tgt !== null && !this.hostile(p.side, tgt)) { tgt = null; h.tgt = null; }
+    if (!tgt && h.go) { if (moveTo(h.go.x, h.go.y, 4)) h.go = null; return; }
+    if (!tgt) tgt = this.nearestHostile(p.side, h, d.reach);
+    if (!tgt) return;
+    const dist = Math.hypot(tgt.x - h.x, tgt.y - h.y);
+    if (dist > d.reach) { if (h.tgt !== null) moveTo(tgt.x, tgt.y, d.reach - 6); return; }
+    if (h.cd > 0) return;
+    h.cd = d.interval;
+    const a = this.armorOf(tgt);
+    let dmg = this.heroDamage(h) * DATA.damageTable.Normal[a.armorType] * 100 / (100 + 6 * a.armor);
+    if (this.t < h.drumU) dmg *= 1 + DATA.items.drum.bonus;
+    this.hurt(tgt, dmg, p.side);
+    this.ev({ k: 'a', x1: h.x, y1: h.y, x2: tgt.x, y2: tgt.y, r: 0, c: 0, o: p.side });
+  }
+
+  spawnCamp(c) {
+    const def = c.def, nd = DATA.neutrals[def.unit];
+    for (let i = 0; i < def.count; i++) {
+      const ox = def.count > 1 ? (i - (def.count - 1) / 2) * 34 : 0, oy = def.count > 1 ? (i % 2 ? 18 : -10) : 0;
+      this.neutrals.push({ id: this.nextId++, neutral: true, camp: c.id, type: def.unit, x: c.x + ox, y: c.y + oy, hx: c.x + ox, hy: c.y + oy, hp: nd.hp, cd: rand(0, 1), stunU: 0, lastHit: -1 });
+    }
+    c.alive = def.count; c.respawnT = 0;
+  }
+
+  stepCamps() {
+    for (const c of this.camps) {
+      if (c.alive === 0) { c.respawnT -= DT; if (c.respawnT <= 0) this.spawnCamp(c); continue; }
+      // агрессия на героя: радиус 250, сброс за 300
+      let tgt = null, bd = Infinity;
+      for (const p of this.players) {
+        const h = p.hero;
+        if (h.dead) continue;
+        const d = Math.hypot(h.x - c.x, h.y - c.y);
+        const lim = c.aggro === h.o ? S.neutralLeash : S.neutralAggro;
+        if (d <= lim && d < bd) { bd = d; tgt = h; }
+      }
+      c.aggro = tgt ? tgt.o : null;
+      for (const n of this.neutrals) {
+        if (n.camp !== c.id) continue;
+        const nd = DATA.neutrals[n.type];
+        n.cd -= DT;
+        if (this.t < n.stunU) continue;
+        const speed = nd.speed * S.heroSpeedScale * DT;
+        const go = (tx, ty, stop) => { const dx = tx - n.x, dy = ty - n.y, dist = Math.hypot(dx, dy); if (dist <= stop) return; const st = Math.min(speed, dist - stop); n.x += dx / dist * st; n.y += dy / dist * st; };
+        if (tgt) {
+          const dist = Math.hypot(tgt.x - n.x, tgt.y - n.y);
+          if (dist > nd.reach) go(tgt.x, tgt.y, nd.reach - 6);
+          else if (n.cd <= 0) {
+            n.cd = nd.interval;
+            const a = this.armorOf(tgt);
+            this.hurt(tgt, randInt(nd.damage[0], nd.damage[1]) * DATA.damageTable.Normal[a.armorType] * 100 / (100 + 6 * a.armor), -1);
+            this.ev({ k: 'a', x1: n.x, y1: n.y, x2: tgt.x, y2: tgt.y, r: 0, c: 0, o: -1 });
+          }
+        } else {
+          go(n.hx, n.hy, 2);
+          n.hp = Math.min(nd.hp, n.hp + nd.hp * 0.1 * DT);
+        }
+      }
+    }
+  }
+
+  botHero(p) {
+    const h = p.hero;
+    if (h.dead) return;
+    const camp = this.camps[p.side];
+    const home = { x: this.castles[p.side].x + this.dir(p.side) * 330, y: L.laneY };
+    h.dx = h.dy = 0;
+    if (h.hp < h.mh * 0.45) { h.tgt = null; h.go = { x: this.castles[p.side].x + this.dir(p.side) * 120, y: L.laneY }; return; }
+    if (h.tgt === null && !h.go) {
+      const golem = this.camps[2];
+      const goal = camp.alive > 0 ? camp : (golem.alive > 0 && h.lv >= 3 ? golem : null);
+      const n = goal && this.neutrals.find(n => n.camp === goal.id);
+      if (n) h.tgt = n.id; else h.go = home;
+    }
+    if (h.skCd <= 0 && p.gold > 80 && Math.random() < 0.3) this.cmdHeroSkill(p);
   }
 
   calcDamage(def, armorType, armor) {
@@ -348,10 +506,16 @@ class Game {
       const d = Math.abs(e.x - b.x);
       if (d <= t.reach && d < best) { best = d; tgt = e; }
     }
+    for (const pl of this.players) {
+      const h = pl.hero;
+      if (h.dead || h.o === b.o) continue;
+      const d = Math.hypot(h.x - b.x, h.y - b.y);
+      if (d <= t.reach && d < best) { best = d; tgt = h; }
+    }
     if (!tgt || b.tcd > 0) return;
     b.tcd = t.interval;
-    const td = DATA.units[tgt.type];
-    tgt.hp -= this.calcDamage(t, td.armorType, td.armor); tgt.lastHit = b.o;
+    const td = this.armorOf(tgt);
+    this.hurt(tgt, this.calcDamage(t, td.armorType, td.armor), b.o);
     this.ev({ k: 'a', x1: b.x, y1: b.y, x2: tgt.x, y2: tgt.y, r: 1, c: 0, o: b.o, tw: 1 });
   }
 
@@ -363,7 +527,12 @@ class Game {
       for (const e of this.units) {
         if (e.o === u.o || e.hp <= 0 || Math.abs(e.x - tgt.x) > sk.radius) continue;
         const td = DATA.units[e.type];
-        e.hp -= sk.damage * DATA.damageTable.Magic[td.armorType] * 100 / (100 + 6 * td.armor); e.lastHit = u.o;
+        this.hurt(e, sk.damage * DATA.damageTable.Magic[td.armorType] * 100 / (100 + 6 * td.armor), u.o);
+      }
+      const eh = this.players[1 - u.o].hero;
+      if (!eh.dead && Math.hypot(eh.x - tgt.x, eh.y - tgt.y) <= sk.radius) {
+        const td = this.armorOf(eh);
+        this.hurt(eh, sk.damage * DATA.damageTable.Magic[td.armorType] * 100 / (100 + 6 * td.armor), u.o);
       }
       this.ev({ k: 'nova', x: tgt.x, y: tgt.y, o: u.o });
     } else if (sk.type === 'lust') {
@@ -384,6 +553,11 @@ class Game {
       if (e.o === u.o || e.hp <= 0) continue;
       const d = Math.abs(e.x - u.x);
       if (d <= reach && d < best) { best = d; tgt = e; kind = 'u'; }
+    }
+    const eh = this.players[1 - u.o].hero;
+    if (!eh.dead) {
+      const d = Math.hypot(eh.x - u.x, eh.y - u.y);
+      if (d <= reach && d < best) { best = d; tgt = eh; kind = 'u'; }
     }
     if (!tgt) {
       for (const b of this.buildings) {
@@ -412,7 +586,7 @@ class Game {
 
   attack(u, def, tgt, kind) {
     let armorType, armor;
-    if (kind === 'u') { const td = DATA.units[tgt.type]; armorType = td.armorType; armor = td.armor; }
+    if (kind === 'u') { const td = this.armorOf(tgt); armorType = td.armorType; armor = td.armor; }
     else if (kind === 'b') { armorType = DATA.buildingArmor.armorType; armor = DATA.buildingArmor.armor; }
     else { armorType = DATA.castle.armorType; armor = DATA.castle.armor; }
 
@@ -421,7 +595,7 @@ class Game {
     if (def.crit && Math.random() < def.crit.chance) { dmg *= 1 + def.crit.bonus; crit = true; }
     if (kind !== 'u' && def.buildingMult) dmg *= def.buildingMult;
     if (this.t < u.drumU) dmg *= 1 + DATA.items.drum.bonus;
-    tgt.hp -= dmg; tgt.lastHit = u.o;
+    this.hurt(tgt, dmg, u.o);
 
     if (kind === 'b' && def.pillage && this.t >= u.pillT) {
       u.pillT = this.t + def.pillage.cooldown;
@@ -457,6 +631,37 @@ class Game {
         const g = Math.floor(b.invested * S.buildingBounty);
         k.gold += g; k.stats.gold += g; k.stats.bKills++;
         this.ev({ k: 't', x: b.x, y: this.bldCenterY(b) - 30, s: '+' + g, o: b.lastHit });
+      }
+    }
+    for (let i = this.neutrals.length - 1; i >= 0; i--) {
+      const n = this.neutrals[i];
+      if (n.hp > 0) continue;
+      this.neutrals.splice(i, 1);
+      this.ev({ k: 'd', x: n.x, y: n.y });
+      const c = this.camps[n.camp];
+      if (--c.alive > 0) continue;
+      c.respawnT = c.def.respawn; c.aggro = null;
+      if (n.lastHit >= 0) {
+        const k = this.players[n.lastHit];
+        k.gold += c.def.gold; k.stats.gold += c.def.gold; k.stats.camps++;
+        this.addXp(k, c.def.xp);
+        if (c.def.shards) {
+          k.shards += c.def.shards;
+          while (k.shards >= S.shardsPerCrystal) { k.shards -= S.shardsPerCrystal; if (k.crystals < S.maxCrystals) k.crystals++; else k.shards = 0; }
+        }
+        this.ev({ k: 't', x: n.x, y: n.y - 24, s: '+' + c.def.gold + (c.def.shards ? ' 💠' : ''), o: n.lastHit });
+      }
+    }
+    for (const p of this.players) {
+      const h = p.hero;
+      if (h.dead || h.hp > 0) continue;
+      h.dead = true; h.hp = 0; h.rt = S.respawnBase + S.respawnPerLevel * h.lv; h.tgt = null; h.go = null; h.dx = h.dy = 0;
+      this.ev({ k: 'd', x: h.x, y: h.y });
+      if (h.lastHit >= 0 && h.lastHit !== p.side) {
+        const k = this.players[h.lastHit];
+        k.gold += S.heroKillGold; k.stats.gold += S.heroKillGold; k.stats.heroKills++;
+        this.addXp(k, S.heroKillXp);
+        this.ev({ k: 't', x: h.x, y: h.y - 24, s: '+' + S.heroKillGold, o: h.lastHit });
       }
     }
     const dead = this.castles.filter(c => c.hp <= 0);
@@ -519,9 +724,13 @@ class Game {
       b: this.buildings.map(b => ({
         id: b.id, o: b.o, ty: b.type, s: b.slot, hp: Math.max(0, Math.round(b.hp)), mh: b.max,
         pr: DATA.buildings[b.type].interval ? Math.round((1 - b.spawnT / DATA.buildings[b.type].interval) * 100) / 100 : 0,
-        cd: Math.ceil(b.cd)
+        cd: Math.ceil(b.cd), rp: b.repair ? 1 : 0
       })),
-      bl: this.players.map(p => ({ x: Math.round(p.builder.x), y: Math.round(p.builder.y), m: p.builder.tx !== null || p.builder.orders.length ? 1 : 0, rp: p.builder.rep ? 1 : 0, q: p.builder.orders.map(o => o.slot) })),
+      hr: this.players.map(p => { const h = p.hero; return {
+        x: Math.round(h.x), y: Math.round(h.y), hp: Math.max(0, Math.ceil(h.hp)), mh: h.mh, lv: h.lv, xp: h.xp,
+        d: h.dead ? 1 : 0, rt: Math.ceil(h.rt), sk: Math.ceil(h.skCd), st: this.t < h.stunU ? 1 : 0, tg: h.tgt, sh: p.shards }; }),
+      nu: this.neutrals.map(n => [n.id, n.camp, n.type, Math.round(n.x), Math.round(n.y), Math.ceil(n.hp), this.t < n.stunU ? 1 : 0]),
+      cp: this.camps.map(c => ({ n: c.alive, rt: Math.ceil(Math.max(0, c.respawnT)) })),
       u: this.units.map(u => [
         u.id, u.o, u.type, Math.round(u.x * 10) / 10, Math.round(u.y), Math.ceil(u.hp),
         (this.t < u.drumU ? 1 : 0) | (this.t < u.lodgeU ? 2 : 0) | (this.t < u.bloodU ? 4 : 0) | (this.t < u.lustU ? 8 : 0)

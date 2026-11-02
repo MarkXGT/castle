@@ -41,7 +41,21 @@
     },
     "repairRate": 60,
     "repairCostPerHp": 0.05,
-    "repairRange": 90
+    "repairRange": 90,
+    "heroSpeedScale": 0.55,
+    "heroRegen": 3,
+    "heroRegenDelay": 5,
+    "xpPerLevel": 100,
+    "maxLevel": 5,
+    "hpPerLevel": 80,
+    "dmgPerLevel": 2,
+    "respawnBase": 10,
+    "respawnPerLevel": 2,
+    "heroKillGold": 25,
+    "heroKillXp": 20,
+    "neutralAggro": 250,
+    "neutralLeash": 300,
+    "shardsPerCrystal": 2
   },
   "castle": {
     "armor": 8,
@@ -524,5 +538,132 @@
   "factions": {
     "human": "Люди",
     "orc": "Орки"
-  }
+  },
+  "heroes": {
+    "human": {
+      "name": "Captain",
+      "icon": "🤴",
+      "hp": 750,
+      "armorType": "Heavy",
+      "armor": 2,
+      "attackType": "Normal",
+      "damage": [
+        20,
+        24
+      ],
+      "dps": 15,
+      "range": 80,
+      "reach": 40,
+      "speed": 310,
+      "skill": {
+        "type": "bash",
+        "name": "Shield Bash",
+        "cost": {
+          "g": 20
+        },
+        "cooldown": 12,
+        "damage": 90,
+        "stun": 0.8,
+        "range": 70,
+        "desc": "90 урона и оглушение 0,8 с герою или нейтралу; обычным юнитам — только урон."
+      }
+    },
+    "orc": {
+      "name": "Chieftain",
+      "icon": "👺",
+      "hp": 750,
+      "armorType": "Heavy",
+      "armor": 2,
+      "attackType": "Normal",
+      "damage": [
+        20,
+        24
+      ],
+      "dps": 15,
+      "range": 80,
+      "reach": 40,
+      "speed": 310,
+      "skill": {
+        "type": "sweep",
+        "name": "Axe Sweep",
+        "cost": {
+          "g": 20
+        },
+        "cooldown": 12,
+        "damage": 70,
+        "radius": 90,
+        "desc": "70 урона всем врагам вокруг героя (радиус 90). Без оглушения."
+      }
+    }
+  },
+  "neutrals": {
+    "wolf": {
+      "name": "Wolf",
+      "icon": "🐕",
+      "hp": 180,
+      "armorType": "Unarmored",
+      "armor": 0,
+      "damage": [
+        12,
+        15
+      ],
+      "interval": 1.5,
+      "reach": 36,
+      "speed": 220
+    },
+    "golem": {
+      "name": "Stone Golem",
+      "icon": "🗿",
+      "hp": 650,
+      "armorType": "Heavy",
+      "armor": 3,
+      "damage": [
+        32,
+        38
+      ],
+      "interval": 2,
+      "reach": 42,
+      "speed": 150
+    }
+  },
+  "campTypes": {
+    "wolves": {
+      "name": "Волчья стая",
+      "count": 3,
+      "unit": "wolf",
+      "gold": 25,
+      "xp": 30,
+      "shards": 0,
+      "respawn": 45
+    },
+    "golem": {
+      "name": "Каменный голем",
+      "count": 1,
+      "unit": "golem",
+      "gold": 55,
+      "xp": 60,
+      "shards": 1,
+      "respawn": 90
+    }
+  },
+  "camps": [
+    {
+      "id": 0,
+      "type": "wolves",
+      "x": 560,
+      "y": 60
+    },
+    {
+      "id": 1,
+      "type": "wolves",
+      "x": 1040,
+      "y": 60
+    },
+    {
+      "id": 2,
+      "type": "golem",
+      "x": 800,
+      "y": 545
+    }
+  ]
 }

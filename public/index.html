@@ -99,6 +99,7 @@
     <span class="chip">💎 <b id="crys">0</b> <span class="dim small" id="crysT"></span></span>
     <span class="chip">👥 <b id="army">0</b>/40</span>
     <span class="chip">☠️ <b id="kills">0</b></span>
+    <span class="chip" id="heroChip"></span>
   </div>
   <div id="stage">
     <canvas id="cv" width="1280" height="480"></canvas>
@@ -203,7 +204,7 @@ function renderLobby(m) {
 
 // ---------- матч ----------
 function startMatch() {
-  ended = null; snap = null; selected = null; mode = null; disp.clear(); fx.length = 0; bdisp[0] = bdisp[1] = null; follow = true; camX = 0; camY = 0;
+  ended = null; snap = null; selected = null; mode = null; disp.clear(); fx.length = 0; hdisp[0] = hdisp[1] = null; follow = true; camX = 0; camY = 0;
   $('endbox').classList.add('hidden');
   show('game');
   $('myName').textContent = names[mySide] + ' · ' + DATA.factions[factions[mySide]];
@@ -266,16 +267,20 @@ function onSnap() {
   $('ultTxt').textContent = p.uc > 0 ? `перезарядка ${p.uc}с` : (p.u >= S.ultMax ? 'ГОТОВ · ' : p.u + '% · ') + cost(ult.cost);
   $('ultBtn').classList.toggle('off', !ready || !canAfford(ult.cost));
 
+  const hr = snap.hr[mySide], hd = DATA.heroes[factions[mySide]], sk = hd.skill;
+  $('heroChip').innerHTML = hr.d
+    ? `${hd.icon} ${hd.name} ур.${hr.lv} — возрождение через <b>${hr.rt}</b> с`
+    : `${hd.icon} <b>${hd.name}</b> ур.${hr.lv}/${S.maxLevel} · ❤️ ${hr.hp}/${hr.mh} · XP ${hr.lv >= S.maxLevel ? 'макс' : (hr.xp % S.xpPerLevel) + '/' + S.xpPerLevel} · 💠${hr.sh} · <button class="gb" data-a="hskill" title="${sk.desc}" style="display:inline-flex;flex-direction:row;gap:6px;padding:3px 8px"><b>[Q] ${sk.name}</b><small>${hr.sk > 0 ? hr.sk + 'с' : cost(sk.cost)}</small></button>`;
   for (const e of snap.ev) pushFx(e);
   renderSel();
 }
 
 function modeHint() {
   switch (mode.k) {
-    case 'place': return 'Кликните клетку на своей базе — строитель подойдёт и построит (Shift — несколько, Esc/ПКМ — отмена)';
+    case 'place': return 'Кликните клетку на своей базе (Shift — несколько, Esc/ПКМ — отмена)';
     case 'heal': return 'Кликните область на поле для лечения';
     case 'drum': return 'Кликните область на поле для War Drum';
-    case 'salve': return 'Кликните своего юнита';
+    case 'salve': return 'Кликните своего юнита или героя';
     case 'charge': return 'Кликните вражеское здание';
   }
 }
@@ -289,7 +294,7 @@ function renderSel() {
   if (sig === selSig) return;
   selSig = sig;
   const el = $('selPanel');
-  if (!b) { el.innerHTML = '<h3>Выбор</h3><div class="dim"><b>ПКМ</b> — отправить строителя 👷 (по повреждённому зданию — чинить 🔧).<br><b>ЛКМ по зданию</b> — улучшить, продать, способность.<br>Строить: кнопка здания (или 1–5) → клик по клетке базы.<br>Камера: WASD/стрелки, края экрана, миникарта; Пробел — к строителю.</div>'; return; }
+  if (!b) { el.innerHTML = '<h3>Управление</h3><div class="dim"><b>WASD</b> — двигать героя. <b>ЛКМ по врагу или нейтралу</b> — атаковать. <b>Q</b> — навык героя.<br><b>ПКМ</b> по земле — герой идёт туда; по повреждённому зданию — чинить 🔧.<br>Здания: кнопка (или 1–6) → клик по клетке своей базы, из любой точки карты.<br>ЛКМ по своему зданию — улучшить, продать, способность. Камера: стрелки, края экрана, миникарта; Пробел — к герою. Герой не бьёт здания.</div>'; return; }
   const up = d.upgradeTo && DATA.buildings[d.upgradeTo];
   const ab = d.ability;
   let h = `<h3>${d.icon} ${d.name}</h3><div>HP ${b.hp}/${b.mh}</div>`;
@@ -314,14 +319,28 @@ function sellValue(b) {
 // ---------- ввод ----------
 function setMode(m) { mode = m; selSig = ''; if (snap) onSnap(); }
 const keys = new Set();
+const held = new Set();
+let lastDir = '0,0';
+function sendHeroDir() {
+  if (!snap) return;
+  const dxs = (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0), dy = (held.has('s') ? 1 : 0) - (held.has('w') ? 1 : 0);
+  const dx = dxs * (mySide === 1 ? -1 : 1);   // зеркальная камера у правого игрока
+  const key = dx + ',' + dy;
+  if (key !== lastDir) { lastDir = key; send({ t: 'cmd', c: { c: 'hmove', dx, dy } }); }
+}
+const CODE = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd' };
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  if (e.key === 'Escape') setMode(null);
+  if (CODE[e.code]) { held.add(CODE[e.code]); sendHeroDir(); e.preventDefault(); }
+  else if (e.code === 'KeyQ') send({ t: 'cmd', c: { c: 'hskill' } });
+  else if (e.key === 'Escape') setMode(null);
   else if (e.code === 'Space') { follow = true; e.preventDefault(); }
   else if (/^[1-9]$/.test(e.key)) { const b = $('buildPanel').querySelectorAll('button')[+e.key - 1]; if (b) b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); }
-  else { keys.add(e.key.toLowerCase()); if (e.key.startsWith('Arrow')) e.preventDefault(); }
+  else if (e.key.startsWith('Arrow')) { keys.add(e.key.toLowerCase()); e.preventDefault(); }
 });
-document.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+document.addEventListener('keyup', e => { if (CODE[e.code]) { held.delete(CODE[e.code]); sendHeroDir(); } keys.delete(e.key.toLowerCase()); });
+window.addEventListener('blur', () => { held.clear(); keys.clear(); sendHeroDir(); });
+$('heroChip').addEventListener('pointerdown', e => { if (e.target.closest('[data-a=hskill]')) send({ t: 'cmd', c: { c: 'hskill' } }); });
 
 function panelClick(e) {
   const btn = e.target.closest('button[data-a]');
@@ -389,7 +408,7 @@ cv.addEventListener('contextmenu', e => {
   const own = bldAt(e, true);
   if (own && own.hp < own.mh) { send({ t: 'cmd', c: { c: 'repair', id: own.id } }); return; }
   const p = toWorld(e);
-  send({ t: 'cmd', c: { c: 'move', x: p.x, y: p.y } });
+  send({ t: 'cmd', c: { c: 'hgo', x: p.x, y: p.y } });
   pushFx({ k: 'mv', x: p.x, y: p.y });
 });
 cv.addEventListener('pointermove', e => {
@@ -416,19 +435,30 @@ cv.addEventListener('pointerdown', e => {
     else if (mode.k === 'salve') {
       const q = unP(c.px, c.py + 10);
       let best = null, bd = 45;
-      for (const u of snap.u) if (u[1] === mySide) { const d = Math.hypot(u[3] - q.x, u[4] - q.y); if (d < bd) { bd = d; best = u; } }
-      if (best) { send({ t: 'cmd', c: { c: 'item', item: 'salve', target: best[0] } }); setMode(null); } else toast('Нужен свой юнит');
+      for (const u of snap.u) if (u[1] === mySide) { const d = Math.hypot(u[3] - q.x, u[4] - q.y); if (d < bd) { bd = d; best = u[0]; } }
+      const mh = snap.hr[mySide];
+      if (!mh.d && Math.hypot(mh.x - q.x, mh.y - q.y) < bd) best = 'h' + mySide;
+      if (best !== null) { send({ t: 'cmd', c: { c: 'item', item: 'salve', target: best } }); setMode(null); } else toast('Нужен свой юнит или герой');
     }
     return;
   }
   const b = bldAt(e, true);
-  selected = b ? b.id : null; selSig = ''; renderSel();
+  if (b) { selected = b.id; selSig = ''; renderSel(); return; }
+  const q = unP(c.px, c.py + 12);
+  let id = null, bd = 42;
+  const test = (x, y, tid) => { const d = Math.hypot(x - q.x, y - q.y); if (d < bd) { bd = d; id = tid; } };
+  for (const u of snap.u) if (u[1] !== mySide) test(u[3], u[4], u[0]);
+  for (const n of snap.nu) test(n[3], n[4], n[0]);
+  const eh = snap.hr[1 - mySide];
+  if (!eh.d) test(eh.x, eh.y, 'h' + (1 - mySide));
+  if (id !== null) { send({ t: 'cmd', c: { c: 'hatk', id } }); return; }
+  selected = null; selSig = ''; renderSel();
 });
 function bldHit(b, p) { const s = slotPos(b.o, b.s); return Math.abs(p.x - s.x) <= L.cell / 2 && Math.abs(p.y - s.y) <= L.cell / 2; }
 
 // ---------- эффекты ----------
 function pushFx(e) {
-  fx.push({ ...e, t0: performance.now(), dur: { a: 180, d: 400, t: 900, h: 600, boom: 500, ring: 600, ult: 900, mv: 600, nova: 600, lust: 700 }[e.k] || 400 });
+  fx.push({ ...e, t0: performance.now(), dur: { a: 180, d: 400, t: 900, h: 600, boom: 500, ring: 600, ult: 900, mv: 600, nova: 600, lust: 700, lvl: 1200 }[e.k] || 400 });
   if (fx.length > 300) fx.splice(0, fx.length - 300);
 }
 
@@ -470,6 +500,11 @@ function drawBg() {
     groundQuad(side === 0 ? 0 : W - baseEdge(), side === 0 ? baseEdge() : W, 0, L.worldH, side === mySide ? 'rgba(59,130,246,.14)' : 'rgba(239,68,68,.14)', side === mySide ? 'rgba(96,165,250,.7)' : 'rgba(248,113,113,.7)', 2);
   }
   groundQuad(0, W, L.laneY - L.laneHalf, L.laneY + L.laneHalf, '#8a7650', '#5d4d30', 2);
+  for (const cd of DATA.camps) {
+    if (cd.y < L.laneY) groundQuad(cd.x - 24, cd.x + 24, cd.y, L.laneY - L.laneHalf, '#8a7650');
+    else groundQuad(cd.x - 24, cd.x + 24, L.laneY + L.laneHalf, cd.y, '#8a7650');
+    groundQuad(cd.x - 60, cd.x + 60, cd.y - 40, cd.y + 40, '#6b5b3d', '#4a3d28', 2);
+  }
   for (let x = 120; x < W - 120; x += 90) groundQuad(x, x + 40, L.laneY - 2, L.laneY + 2, 'rgba(255,255,255,.18)');
 }
 
@@ -497,6 +532,7 @@ function drawBuilding(b) {
   if (b.id === selected) { const f = [Pm(mc - 22, wc - 22), Pm(mc + 22, wc - 22), Pm(mc + 22, wc + 22), Pm(mc - 22, wc + 22)]; poly(f, 'rgba(74,222,128,.25)', '#4ade80', 3); }
   emoji(d.icon, c.x, c.y - h - 2, 18);
   hpBar(c.x, c.y - h - 28, 40, b.hp, b.mh);
+  if (b.rp) emoji('🔧', c.x + 22, c.y - h - 14 + Math.sin(performance.now() / 90) * 3, 14);
   const f = Pm(mc + 19, wc + 19);
   if (d.kind === 'spawner') { ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(f.x - 20, f.y + 4, 40, 4); ctx.fillStyle = '#38bdf8'; ctx.fillRect(f.x - 20, f.y + 4, 40 * b.pr, 4); }
   else if (b.cd > 0) { ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(b.cd + 'с', f.x, f.y + 12); }
@@ -519,30 +555,48 @@ function drawSlotsOverlay() {
     else poly(cellPoly(s, 1), null, 'rgba(255,255,255,.10)');
     if (i === hover) { const c = P(s.x, s.y); ctx.globalAlpha = .8; emoji(d.icon, c.x, c.y - 14, 24); ctx.globalAlpha = 1; }
   }
-  for (const q of snap.bl[mySide].q) {
-    const s = slotPos(mySide, q);
-    ctx.setLineDash([5, 4]); poly(cellPoly(s, 3), 'rgba(250,204,21,.18)', '#facc15', 2); ctx.setLineDash([]);
-    const c = P(s.x, s.y); emoji('🔨', c.x, c.y - 4, 16);
-  }
-  if (placing) { // радиус стройки вокруг строителя
-    const b = snap.bl[mySide], c = P(b.x, b.y);
-    ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.ellipse(c.x, c.y, L.buildRange * KX, L.buildRange * KY, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
-  }
 }
 
-const bdisp = [null, null];
-function drawBuilder(side, dt) {
-  const t = snap.bl[side];
-  let d = bdisp[side]; if (!d) d = bdisp[side] = { x: t.x, y: t.y };
+const hdisp = [null, null];
+const myTg = () => snap.hr[mySide].tg;
+function ring(c, r) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(c.x, c.y, r, r * 0.45, 0, 0, 7); ctx.stroke(); ctx.lineWidth = 1; }
+function drawHero(side, dt) {
+  const t = snap.hr[side];
+  if (t.d) { hdisp[side] = null; return; }
+  let d = hdisp[side]; if (!d) d = hdisp[side] = { x: t.x, y: t.y };
   const k = Math.min(1, dt * 14); d.x += (t.x - d.x) * k; d.y += (t.y - d.y) * k;
-  const c = P(d.x, d.y);
-  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 14, 6, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = teamCol(side); ctx.beginPath(); ctx.arc(c.x, c.y - 16, 16, 0, 7); ctx.fill();
+  const c = P(d.x, d.y), def = DATA.heroes[factions[side]];
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 15, 6, 0, 0, 7); ctx.fill();
+  if (myTg() === 'h' + side) ring(c, 22);
+  ctx.fillStyle = teamCol(side); ctx.beginPath(); ctx.arc(c.x, c.y - 17, 17, 0, 7); ctx.fill();
   ctx.strokeStyle = '#facc15'; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
-  emoji('👷', c.x, c.y - 15, 20);
+  emoji(def.icon, c.x, c.y - 16, 22);
+  hpBar(c.x, c.y - 46, 46, t.hp, t.mh);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(side === mySide ? 'Вы' : names[side], c.x, c.y - 42);
-  if (t.rp) emoji('🔧', c.x + 18, c.y - 34 + Math.sin(performance.now() / 80) * 4, 18);
+  ctx.fillText((side === mySide ? 'Вы' : names[side]) + ' · ' + t.lv, c.x, c.y - 54);
+  if (t.st) emoji('💫', c.x, c.y - 66, 16);
+}
+function drawNeutral(n, dt) {
+  const [id, camp, ty, x, y, hp, st] = n;
+  let d = disp.get(id);
+  if (!d) { d = { x, y }; disp.set(id, d); }
+  const k = Math.min(1, dt * 14); d.x += (x - d.x) * k; d.y += (y - d.y) * k;
+  const def = DATA.neutrals[ty], c = P(d.x, d.y), r = ty === 'golem' ? 18 : 12;
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, r, r * .45, 0, 0, 7); ctx.fill();
+  if (myTg() === id) ring(c, r + 8);
+  ctx.fillStyle = '#9ca3af'; ctx.beginPath(); ctx.arc(c.x, c.y - r, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#374151'; ctx.stroke();
+  emoji(def.icon, c.x, c.y - r, r + 3);
+  if (hp < def.hp) hpBar(c.x, c.y - r * 2 - 8, 30, hp, def.hp);
+  if (st) emoji('💫', c.x, c.y - r * 2 - 16, 14);
+}
+
+function drawCamps() {
+  DATA.camps.forEach((cd, i) => {
+    const c = P(cd.x, cd.y), cp = snap.cp[i], ct = DATA.campTypes[cd.type];
+    ctx.fillStyle = '#e5e7eb'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(cp.n ? ct.name : ct.name + ' · ' + cp.rt + 'с', c.x, c.y + 34);
+  });
 }
 
 function drawUnit(u, dt) {
@@ -574,8 +628,9 @@ function drawFx(now) {
     else if (e.k === 't') { if (e.o === mySide) { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.fillStyle = '#facc15'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(e.s, c.x, c.y - 24 - a * 24); ctx.globalAlpha = 1; } }
     else if (e.k === 'ring') { ctx.globalAlpha = 1 - a; groundQuad(e.x - S.areaRadius, e.x + S.areaRadius, L.laneY - 70, L.laneY + 70, 'rgba(255,255,255,.12)', e.c, 4); ctx.globalAlpha = 1; }
     else if (e.k === 'mv') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(c.x, c.y, (4 + a * 14) * 1.6, (4 + a * 14) * .8, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
-    else if (e.k === 'nova') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(c.x, c.y, 110 * KX * (.3 + a * .7), 110 * KY * (.3 + a * .7), 0, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(125,211,252,.25)'; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'nova') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(c.x, c.y, (e.r || 110) * KX * (.3 + a * .7), (e.r || 110) * KY * (.3 + a * .7), 0, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(125,211,252,.25)'; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
     else if (e.k === 'lust') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#34d399'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(c.x, c.y, 220 * KX * (.2 + a * .8), 220 * KY * (.2 + a * .8), 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'lvl') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.fillStyle = '#facc15'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('LEVEL UP!', c.x, c.y - 60 - a * 30); ctx.globalAlpha = 1; }
     else if (e.k === 'ult') { ctx.globalAlpha = (1 - a) * 0.25; ctx.fillStyle = e.o === mySide ? '#3b82f6' : '#ef4444'; ctx.fillRect(0, 0, VW, VH); ctx.globalAlpha = 1; }
   }
 }
@@ -596,7 +651,8 @@ function drawMinimap() {
   for (const s of [0, 1]) dot(s === 0 ? L.castleX : W - L.castleX, L.laneY, teamCol(s), 6);
   for (const b of snap.b) { const s = slotPos(b.o, b.s); dot(s.x, s.y, teamCol(b.o), 2); }
   for (const u of snap.u) dot(u[3], u[4], teamCol(u[1]), 1.5);
-  for (const s of [0, 1]) { const b = snap.bl[s]; dot(b.x, b.y, '#facc15', 3); }
+  for (const cd of DATA.camps) dot(cd.x, cd.y, '#9ca3af', 3);
+  for (const s of [0, 1]) { const h = snap.hr[s]; if (!h.d) dot(h.x, h.y, '#facc15', 4); }
   const c = unP(VW / 2, VH / 2); // центр камеры
   ctx.strokeStyle = '#fff'; ctx.strokeRect(MM.x + mirror(c.x) * MM.k - 22, MM.y + c.y * MM.k - 12, 44, 24);
 }
@@ -604,17 +660,17 @@ function drawMinimap() {
 function updateCamera(dt) {
   const sp = 700 * dt;
   let px = 0, py = 0;
-  if (keys.has('arrowleft') || keys.has('a')) px -= sp;
-  if (keys.has('arrowright') || keys.has('d')) px += sp;
-  if (keys.has('arrowup') || keys.has('w')) py -= sp;
-  if (keys.has('arrowdown') || keys.has('s')) py += sp;
+  if (keys.has('arrowleft')) px -= sp;
+  if (keys.has('arrowright')) px += sp;
+  if (keys.has('arrowup')) py -= sp;
+  if (keys.has('arrowdown')) py += sp;
   if (mouse.in && !inMM(mouse)) {
     if (mouse.px < 20) px -= sp * .6; else if (mouse.px > VW - 20) px += sp * .6;
     if (mouse.py < 20) py -= sp * .6; else if (mouse.py > VH - 20) py += sp * .6;
   }
   if (px || py) { camX += px; camY += py; follow = false; }
   else if (follow && snap) {
-    const b = snap.bl[mySide], r = rawP(mirror(b.x), b.y), k = Math.min(1, dt * 4);
+    const b = snap.hr[mySide], r = rawP(mirror(b.x), b.y), k = Math.min(1, dt * 4);
     camX += (r.x - VW / 2 - camX) * k; camY += (r.y - VH / 2 - camY) * k;
   }
   clampCam();
@@ -633,8 +689,10 @@ function frame(now) {
     for (const b of snap.b) items.push({ y: slotPos(b.o, b.s).y + 19, f: () => drawBuilding(b) });
     const seen = new Set();
     for (const u of snap.u) { seen.add(u[0]); items.push({ y: u[4], f: () => drawUnit(u, dt) }); }
+    for (const n of snap.nu) { seen.add(n[0]); items.push({ y: n[4], f: () => drawNeutral(n, dt) }); }
+    for (const s of [0, 1]) items.push({ y: snap.hr[s].y, f: () => drawHero(s, dt) });
     for (const id of disp.keys()) if (!seen.has(id)) disp.delete(id);
-    for (const s of [0, 1]) items.push({ y: snap.bl[s].y, f: () => drawBuilder(s, dt) });
+    drawCamps();
     items.sort((a, b) => a.y - b.y);
     for (const it of items) it.f();
     drawFx(now);
@@ -653,7 +711,7 @@ function showEnd() {
   box.innerHTML = `<div class="card"><h1>${title}</h1><p>${m.reason}</p>
     <table><tr><td><b>Вы</b></td><th></th><td><b>Соперник</b></td></tr>
     <tr><td>${m.castles[mySide]}</td><th>Здоровье замка</th><td>${m.castles[1 - mySide]}</td></tr>
-    ${row('Убито юнитов', s => s.kills)}${row('Потеряно юнитов', s => s.lost)}${row('Разрушено зданий', s => s.bKills)}${row('Построено зданий', s => s.built)}${row('Золота заработано', s => s.gold)}</table>
+    ${row('Убито юнитов', s => s.kills)}${row('Потеряно юнитов', s => s.lost)}${row('Разрушено зданий', s => s.bKills)}${row('Убито героев', s => s.heroKills)}${row('Зачищено лагерей', s => s.camps)}${row('Построено зданий', s => s.built)}${row('Золота заработано', s => s.gold)}</table>
     <div class="dim small">Длительность: ${Math.floor(m.time / 60)}:${String(m.time % 60).padStart(2, '0')}</div>
     <div class="row" style="justify-content:center"><button class="btn primary" id="bRematch">Реванш</button><button class="btn" id="bMenu">В меню</button></div></div>`;
   box.classList.remove('hidden');
