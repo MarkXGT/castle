@@ -7,9 +7,9 @@
     "startCrystals": 1,
     "maxCrystals": 3,
     "crystalRegen": 60,
-    "passiveIncome": 20,
-    "incomeInterval": 10,
-    "buildingIncome": 2,
+    "passiveIncome": 10,
+    "incomeInterval": 5,
+    "buildingIncome": 1,
     "unitLimit": 40,
     "sellRefund": 0.5,
     "buildingBounty": 0.1,
@@ -38,46 +38,491 @@
       "builderSpeed": 260,
       "laneSpread": 44,
       "unitDrift": 70
+    },
+    "repairRate": 60,
+    "repairCostPerHp": 0.05,
+    "repairRange": 90
+  },
+  "castle": {
+    "armor": 8,
+    "armorType": "Fortified"
+  },
+  "damageTable": {
+    "Normal": {
+      "Heavy": 1.0,
+      "Medium": 1.5,
+      "Unarmored": 1.0,
+      "Fortified": 0.7
+    },
+    "Pierce": {
+      "Heavy": 1.0,
+      "Medium": 0.75,
+      "Unarmored": 1.5,
+      "Fortified": 0.35
+    },
+    "Siege": {
+      "Heavy": 1.0,
+      "Medium": 0.5,
+      "Unarmored": 1.5,
+      "Fortified": 1.5
+    },
+    "Magic": {
+      "Heavy": 2.0,
+      "Medium": 0.75,
+      "Unarmored": 1.0,
+      "Fortified": 0.35
     }
   },
-  "castle": { "armor": 8, "armorType": "Fortified" },
-  "damageTable": {
-    "Normal": { "Heavy": 1.0, "Medium": 1.5, "Unarmored": 1.0, "Fortified": 0.7 },
-    "Pierce": { "Heavy": 1.0, "Medium": 0.75, "Unarmored": 1.5, "Fortified": 0.35 },
-    "Siege": { "Heavy": 1.0, "Medium": 0.5, "Unarmored": 1.5, "Fortified": 1.5 },
-    "Magic": { "Heavy": 2.0, "Medium": 0.75, "Unarmored": 1.0, "Fortified": 0.35 }
-  },
   "units": {
-    "footman": { "name": "Footman", "icon": "🗡️", "attackType": "Normal", "damage": [24, 26], "dps": 18, "range": 90, "speed": 270, "armorType": "Heavy", "armor": 4, "hp": 250, "bounty": 6 },
-    "sniper": { "name": "Sniper", "icon": "🔫", "attackType": "Pierce", "damage": [31, 36], "dps": 22, "range": 500, "speed": 270, "armorType": "Medium", "armor": 0, "hp": 270, "bounty": 8, "crit": { "chance": 0.1, "bonus": 0.5 } },
-    "siege": { "name": "Siege Engine", "icon": "💣", "attackType": "Siege", "damage": [42, 50], "dps": 16, "range": 180, "speed": 180, "armorType": "Fortified", "armor": 2, "hp": 380, "bounty": 12, "buildingMult": 1.5 },
-    "royalguard": { "name": "Royal Guard", "icon": "👑", "attackType": "Normal", "damage": [32, 38], "dps": 24, "range": 90, "speed": 280, "armorType": "Heavy", "armor": 5, "hp": 500, "bounty": 12 },
-    "grunt": { "name": "Grunt", "icon": "🪓", "attackType": "Normal", "damage": [27, 33], "dps": 20, "range": 90, "speed": 260, "armorType": "Heavy", "armor": 3, "hp": 300, "bounty": 6 },
-    "headhunter": { "name": "Headhunter", "icon": "🏹", "attackType": "Pierce", "damage": [23, 29], "dps": 18, "range": 420, "speed": 270, "armorType": "Medium", "armor": 0, "hp": 240, "bounty": 7 },
-    "raider": { "name": "Raider", "icon": "🐺", "attackType": "Siege", "damage": [38, 44], "dps": 19, "range": 90, "speed": 310, "armorType": "Medium", "armor": 1, "hp": 280, "bounty": 11, "pillage": { "gold": 1, "cooldown": 1 } }
+    "footman": {
+      "name": "Footman",
+      "icon": "🗡️",
+      "attackType": "Normal",
+      "damage": [
+        24,
+        26
+      ],
+      "dps": 18,
+      "range": 90,
+      "speed": 270,
+      "armorType": "Heavy",
+      "armor": 4,
+      "hp": 250,
+      "bounty": 6
+    },
+    "sniper": {
+      "name": "Sniper",
+      "icon": "🔫",
+      "attackType": "Pierce",
+      "damage": [
+        31,
+        36
+      ],
+      "dps": 22,
+      "range": 500,
+      "speed": 270,
+      "armorType": "Medium",
+      "armor": 0,
+      "hp": 270,
+      "bounty": 8,
+      "crit": {
+        "chance": 0.1,
+        "bonus": 0.5
+      }
+    },
+    "siege": {
+      "name": "Siege Engine",
+      "icon": "💣",
+      "attackType": "Siege",
+      "damage": [
+        42,
+        50
+      ],
+      "dps": 16,
+      "range": 180,
+      "speed": 180,
+      "armorType": "Fortified",
+      "armor": 2,
+      "hp": 380,
+      "bounty": 12,
+      "buildingMult": 1.5
+    },
+    "royalguard": {
+      "name": "Royal Guard",
+      "icon": "👑",
+      "attackType": "Normal",
+      "damage": [
+        32,
+        38
+      ],
+      "dps": 24,
+      "range": 90,
+      "speed": 280,
+      "armorType": "Heavy",
+      "armor": 5,
+      "hp": 500,
+      "bounty": 12
+    },
+    "grunt": {
+      "name": "Grunt",
+      "icon": "🪓",
+      "attackType": "Normal",
+      "damage": [
+        27,
+        33
+      ],
+      "dps": 20,
+      "range": 90,
+      "speed": 260,
+      "armorType": "Heavy",
+      "armor": 3,
+      "hp": 300,
+      "bounty": 6
+    },
+    "headhunter": {
+      "name": "Headhunter",
+      "icon": "🏹",
+      "attackType": "Pierce",
+      "damage": [
+        23,
+        29
+      ],
+      "dps": 18,
+      "range": 420,
+      "speed": 270,
+      "armorType": "Medium",
+      "armor": 0,
+      "hp": 240,
+      "bounty": 7
+    },
+    "raider": {
+      "name": "Raider",
+      "icon": "🐺",
+      "attackType": "Siege",
+      "damage": [
+        38,
+        44
+      ],
+      "dps": 19,
+      "range": 90,
+      "speed": 310,
+      "armorType": "Medium",
+      "armor": 1,
+      "hp": 280,
+      "bounty": 11,
+      "pillage": {
+        "gold": 1,
+        "cooldown": 1
+      }
+    },
+    "mage": {
+      "name": "Mage",
+      "icon": "🧙",
+      "attackType": "Magic",
+      "damage": [
+        26,
+        32
+      ],
+      "dps": 19,
+      "range": 400,
+      "speed": 270,
+      "armorType": "Unarmored",
+      "armor": 0,
+      "hp": 220,
+      "bounty": 9,
+      "skill": {
+        "type": "nova",
+        "name": "Frost Nova",
+        "cooldown": 8,
+        "radius": 110,
+        "damage": 70,
+        "desc": "каждые 8 с бьёт по области 70 магического урона"
+      }
+    },
+    "shaman": {
+      "name": "Shaman",
+      "icon": "⚡",
+      "attackType": "Magic",
+      "damage": [
+        22,
+        28
+      ],
+      "dps": 17,
+      "range": 400,
+      "speed": 270,
+      "armorType": "Unarmored",
+      "armor": 0,
+      "hp": 240,
+      "bounty": 9,
+      "skill": {
+        "type": "lust",
+        "name": "Bloodlust",
+        "cooldown": 10,
+        "radius": 220,
+        "aspd": 0.3,
+        "duration": 6,
+        "desc": "каждые 10 с даёт союзникам рядом +30% скорости атаки на 6 с"
+      }
+    }
   },
   "buildings": {
-    "barracks": { "faction": "human", "name": "Barracks", "icon": "🏯", "cost": { "g": 100 }, "hp": 500, "kind": "spawner", "unit": "footman", "interval": 20, "upgradeTo": "stronghold", "desc": "Базовая линия: Footman каждые 20 с." },
-    "stronghold": { "faction": "human", "name": "Stronghold", "icon": "🏰", "cost": { "g": 175 }, "hp": 500, "kind": "spawner", "unit": "footman", "interval": 18, "upgradeOnly": true, "desc": "Улучшение Barracks: Footman каждые 18 с. Открывает Workshop." },
-    "archery": { "faction": "human", "name": "Archery Range", "icon": "🎯", "cost": { "g": 140 }, "hp": 500, "kind": "spawner", "unit": "sniper", "interval": 22, "desc": "Дальний урон: Sniper каждые 22 с." },
-    "workshop": { "faction": "human", "name": "Workshop", "icon": "⚙️", "cost": { "g": 180, "c": 1 }, "hp": 500, "kind": "spawner", "unit": "siege", "interval": 32, "requires": "stronghold", "desc": "Siege Engine каждые 32 с. Требует Stronghold." },
-    "chapel": { "faction": "human", "name": "Chapel", "icon": "⛪", "cost": { "g": 120, "c": 1 }, "hp": 400, "kind": "special", "ability": { "type": "heal", "name": "Лечение", "cost": { "g": 20 }, "amount": 100, "cooldown": 35, "area": true }, "desc": "За 20 З лечит союзников в области на 100 HP. Перезарядка 35 с." },
-
-    "warhut": { "faction": "orc", "name": "War Hut", "icon": "🛖", "cost": { "g": 100 }, "hp": 500, "kind": "spawner", "unit": "grunt", "interval": 20, "upgradeTo": "ostronghold", "desc": "Прочная передняя линия: Grunt каждые 20 с." },
-    "ostronghold": { "faction": "orc", "name": "Stronghold", "icon": "🏰", "cost": { "g": 175 }, "hp": 500, "kind": "spawner", "unit": "grunt", "interval": 18, "upgradeOnly": true, "desc": "Улучшение War Hut: Grunt каждые 18 с. Открывает Beastiary." },
-    "trollden": { "faction": "orc", "name": "Troll Den", "icon": "🦴", "cost": { "g": 140 }, "hp": 500, "kind": "spawner", "unit": "headhunter", "interval": 22, "desc": "Дальний урон: Headhunter каждые 22 с." },
-    "beastiary": { "faction": "orc", "name": "Beastiary", "icon": "🐗", "cost": { "g": 180, "c": 1 }, "hp": 500, "kind": "spawner", "unit": "raider", "interval": 30, "requires": "ostronghold", "desc": "Raider каждые 30 с (Pillage: +1 З за удар по зданию). Требует Stronghold." },
-    "spiritlodge": { "faction": "orc", "name": "Spirit Lodge", "icon": "🔮", "cost": { "g": 120, "c": 1 }, "hp": 400, "kind": "special", "ability": { "type": "haste", "name": "Боевой дух", "cost": { "c": 1 }, "bonus": 0.2, "duration": 8, "cooldown": 40 }, "desc": "За 1 К все союзники получают +20% скорости атаки на 8 с. Перезарядка 40 с." }
+    "barracks": {
+      "faction": "human",
+      "name": "Barracks",
+      "icon": "🏯",
+      "cost": {
+        "g": 100
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "footman",
+      "interval": 20,
+      "upgradeTo": "stronghold",
+      "desc": "Базовая линия: Footman каждые 20 с."
+    },
+    "stronghold": {
+      "faction": "human",
+      "name": "Stronghold",
+      "icon": "🏰",
+      "cost": {
+        "g": 175
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "footman",
+      "interval": 18,
+      "upgradeOnly": true,
+      "desc": "Улучшение Barracks: Footman каждые 18 с. Открывает Workshop."
+    },
+    "archery": {
+      "faction": "human",
+      "name": "Archery Range",
+      "icon": "🎯",
+      "cost": {
+        "g": 140
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "sniper",
+      "interval": 22,
+      "desc": "Дальний урон: Sniper каждые 22 с."
+    },
+    "workshop": {
+      "faction": "human",
+      "name": "Workshop",
+      "icon": "⚙️",
+      "cost": {
+        "g": 180,
+        "c": 1
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "siege",
+      "interval": 32,
+      "requires": "stronghold",
+      "desc": "Siege Engine каждые 32 с. Требует Stronghold."
+    },
+    "chapel": {
+      "faction": "human",
+      "name": "Chapel",
+      "icon": "⛪",
+      "cost": {
+        "g": 120,
+        "c": 1
+      },
+      "hp": 400,
+      "kind": "special",
+      "ability": {
+        "type": "heal",
+        "name": "Лечение",
+        "cost": {
+          "g": 20
+        },
+        "amount": 100,
+        "cooldown": 35,
+        "area": true
+      },
+      "desc": "За 20 З лечит союзников в области на 100 HP. Перезарядка 35 с."
+    },
+    "warhut": {
+      "faction": "orc",
+      "name": "War Hut",
+      "icon": "🛖",
+      "cost": {
+        "g": 100
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "grunt",
+      "interval": 20,
+      "upgradeTo": "ostronghold",
+      "desc": "Прочная передняя линия: Grunt каждые 20 с."
+    },
+    "ostronghold": {
+      "faction": "orc",
+      "name": "Stronghold",
+      "icon": "🏰",
+      "cost": {
+        "g": 175
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "grunt",
+      "interval": 18,
+      "upgradeOnly": true,
+      "desc": "Улучшение War Hut: Grunt каждые 18 с. Открывает Beastiary."
+    },
+    "trollden": {
+      "faction": "orc",
+      "name": "Troll Den",
+      "icon": "🦴",
+      "cost": {
+        "g": 140
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "headhunter",
+      "interval": 22,
+      "desc": "Дальний урон: Headhunter каждые 22 с."
+    },
+    "beastiary": {
+      "faction": "orc",
+      "name": "Beastiary",
+      "icon": "🐗",
+      "cost": {
+        "g": 180,
+        "c": 1
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "raider",
+      "interval": 30,
+      "requires": "ostronghold",
+      "desc": "Raider каждые 30 с (Pillage: +1 З за удар по зданию). Требует Stronghold."
+    },
+    "spiritlodge": {
+      "faction": "orc",
+      "name": "Spirit Lodge",
+      "icon": "🔮",
+      "cost": {
+        "g": 120,
+        "c": 1
+      },
+      "hp": 400,
+      "kind": "special",
+      "ability": {
+        "type": "haste",
+        "name": "Боевой дух",
+        "cost": {
+          "c": 1
+        },
+        "bonus": 0.2,
+        "duration": 8,
+        "cooldown": 40
+      },
+      "desc": "За 1 К все союзники получают +20% скорости атаки на 8 с. Перезарядка 40 с."
+    },
+    "guardtower": {
+      "faction": "human",
+      "name": "Guard Tower",
+      "icon": "🗼",
+      "cost": {
+        "g": 150
+      },
+      "hp": 450,
+      "kind": "tower",
+      "tower": {
+        "attackType": "Pierce",
+        "damage": [
+          24,
+          30
+        ],
+        "dps": 20,
+        "range": 450
+      },
+      "desc": "Башня: стреляет по вражеским юнитам (Pierce 24–30, DPS 20, дальность 450). Дохода не даёт."
+    },
+    "sanctum": {
+      "faction": "human",
+      "name": "Arcane Sanctum",
+      "icon": "🏛️",
+      "cost": {
+        "g": 170,
+        "c": 1
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "mage",
+      "interval": 26,
+      "desc": "Mage каждые 26 с (Frost Nova)."
+    },
+    "fangtower": {
+      "faction": "orc",
+      "name": "Fang Tower",
+      "icon": "🗼",
+      "cost": {
+        "g": 150
+      },
+      "hp": 450,
+      "kind": "tower",
+      "tower": {
+        "attackType": "Normal",
+        "damage": [
+          30,
+          36
+        ],
+        "dps": 22,
+        "range": 400
+      },
+      "desc": "Башня: стреляет по вражеским юнитам (Normal 30–36, DPS 22, дальность 400). Дохода не даёт."
+    },
+    "shamanhut": {
+      "faction": "orc",
+      "name": "Shaman Hut",
+      "icon": "🛕",
+      "cost": {
+        "g": 170,
+        "c": 1
+      },
+      "hp": 500,
+      "kind": "spawner",
+      "unit": "shaman",
+      "interval": 26,
+      "desc": "Shaman каждые 26 с (Bloodlust)."
+    }
   },
-  "buildingArmor": { "armorType": "Fortified", "armor": 5 },
+  "buildingArmor": {
+    "armorType": "Fortified",
+    "armor": 5
+  },
   "items": {
-    "salve": { "name": "Healing Salve", "icon": "🧪", "cost": { "g": 35 }, "amount": 120, "target": "unit", "desc": "Лечит одного вашего юнита на 120 HP. Клик по юниту." },
-    "drum": { "name": "War Drum", "icon": "🥁", "cost": { "g": 60 }, "bonus": 0.15, "duration": 12, "target": "area", "desc": "Союзники в области получают +15% урона на 12 с." },
-    "charge": { "name": "Siege Charge", "icon": "🧨", "cost": { "g": 35, "c": 1 }, "damage": 250, "target": "enemyBuilding", "desc": "Наносит вражескому зданию 250 урона. Клик по зданию." }
+    "salve": {
+      "name": "Healing Salve",
+      "icon": "🧪",
+      "cost": {
+        "g": 35
+      },
+      "amount": 120,
+      "target": "unit",
+      "desc": "Лечит одного вашего юнита на 120 HP. Клик по юниту."
+    },
+    "drum": {
+      "name": "War Drum",
+      "icon": "🥁",
+      "cost": {
+        "g": 60
+      },
+      "bonus": 0.15,
+      "duration": 12,
+      "target": "area",
+      "desc": "Союзники в области получают +15% урона на 12 с."
+    }
   },
   "ults": {
-    "human": { "name": "Royal Guard", "icon": "👑", "cost": { "g": 60, "c": 1 }, "desc": "Призывает 3 Royal Guard (500 HP, 5 брони) у вашего замка." },
-    "orc": { "name": "Blood Charge", "icon": "🩸", "cost": { "g": 60, "c": 1 }, "duration": 10, "aspd": 0.4, "move": 0.2, "desc": "Все орки на линии: +40% скорости атаки и +20% скорости движения на 10 с." }
+    "human": {
+      "name": "Royal Guard",
+      "icon": "👑",
+      "cost": {
+        "g": 60,
+        "c": 1
+      },
+      "desc": "Призывает 3 Royal Guard (500 HP, 5 брони) у вашего замка."
+    },
+    "orc": {
+      "name": "Blood Charge",
+      "icon": "🩸",
+      "cost": {
+        "g": 60,
+        "c": 1
+      },
+      "duration": 10,
+      "aspd": 0.4,
+      "move": 0.2,
+      "desc": "Все орки на линии: +40% скорости атаки и +20% скорости движения на 10 с."
+    }
   },
-  "factions": { "human": "Люди", "orc": "Орки" }
+  "factions": {
+    "human": "Люди",
+    "orc": "Орки"
+  }
 }

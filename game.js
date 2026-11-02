@@ -38,6 +38,10 @@ class Game {
       u.interval = ((u.damage[0] + u.damage[1]) / 2) / u.dps; // интервал выводится из DPS
       this.reach[k] = Math.max(u.range * S.rangeScale, S.minReach);
     }
+    for (const k in DATA.buildings) {
+      const t = DATA.buildings[k].tower;
+      if (t) { t.interval = ((t.damage[0] + t.damage[1]) / 2) / t.dps; t.reach = Math.max(t.range * S.rangeScale, S.minReach); }
+    }
     this.players = [0, 1].map(i => ({
       side: i, faction: factions[i], bot: !!bots[i],
       gold: S.startGold, crystals: S.startCrystals, crystalT: 0, incomeT: 0,
@@ -75,7 +79,8 @@ class Game {
     this.units.push({
       id: this.nextId++, o, type, x, y: y === undefined ? L.laneY : y,
       ly: L.laneY + rand(-1, 1) * L.laneSpread, hp: d.hp, cd: rand(0, 1),
-      lodgeU: 0, bloodU: 0, drumU: 0, pillT: 0, lastHit: -1
+      lodgeU: 0, bloodU: 0, drumU: 0, lustU: 0, pillT: 0, lastHit: -1,
+      sk: d.skill ? d.skill.cooldown / 2 : 0
     });
   }
 
@@ -86,6 +91,7 @@ class Game {
     if (!c || typeof c.c !== 'string') return 'Неверная команда';
     switch (c.c) {
       case 'move': return this.cmdMove(p, c);
+      case 'repair': return this.cmdRepair(p, c);
       case 'build': return this.cmdBuild(p, c);
       case 'upgrade': return this.cmdUpgrade(p, c);
       case 'sell': return this.cmdSell(p, c);
@@ -125,7 +131,18 @@ class Game {
     const slot = c.slot | 0;
     if (q.some(o => o.slot === slot)) return 'Клетка уже в очереди';
     if (q.length >= 8) return 'Очередь заполнена';
-    q.push({ b: c.b, slot });
+    q.push({ k: 'build', b: c.b, slot });
+    return null;
+  }
+
+  cmdRepair(p, c) {
+    const bd = this.myBuilding(p, c.id);
+    if (!bd) return 'Нет такого здания';
+    if (bd.hp >= bd.max) return 'Здание целое';
+    const q = p.builder.orders;
+    if (q.some(o => o.k === 'repair' && o.id === bd.id)) return 'Уже в очереди';
+    if (q.length >= 8) return 'Очередь заполнена';
+    q.push({ k: 'repair', id: bd.id });
     return null;
   }
 
@@ -138,12 +155,28 @@ class Game {
 
   stepBuilder(p) {
     const b = p.builder;
-    let tx = b.tx, ty = b.ty;
+    b.rep = false;
+    let tx = b.tx, ty = b.ty, reach = L.buildRange;
     const order = b.orders[0];
-    if (order) { const sp = slotPos(p.side, order.slot); tx = sp.x; ty = sp.y; }
+    let target = null;
+    if (order && order.k === 'repair') {
+      target = this.buildings.find(x => x.id === order.id && x.o === p.side);
+      if (!target || target.hp >= target.max) { b.orders.shift(); return; }
+      tx = target.x; ty = target.y; reach = S.repairRange;
+    } else if (order) {
+      const sp = slotPos(p.side, order.slot); tx = sp.x; ty = sp.y;
+    }
     if (tx === null) return;
     const dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy);
-    if (order && d <= L.buildRange) {
+    if (order && d <= reach) {
+      if (order.k === 'repair') { // ремонт идёт постепенно: золото за каждый HP
+        const amt = Math.min(S.repairRate * DT, target.max - target.hp);
+        const cost = amt * S.repairCostPerHp;
+        if (p.gold < cost) { this.msgs.push({ side: p.side, msg: 'Не хватает золота на ремонт' }); b.orders.shift(); return; }
+        p.gold -= cost; target.hp += amt; b.rep = true;
+        if (target.hp >= target.max - 0.01) { target.hp = target.max; b.orders.shift(); }
+        return;
+      }
       b.orders.shift();
       const err = this.validateBuild(p, order);
       if (err) this.msgs.push({ side: p.side, msg: err });
@@ -237,12 +270,6 @@ class Game {
       this.pay(p, it.cost);
       this.inArea(p.side, x, u => { u.drumU = this.t + it.duration; });
       this.ev({ k: 'ring', x, o: p.side, c: '#facc15' });
-    } else if (c.item === 'charge') {
-      const b = this.buildings.find(b => b.id === c.target && b.o !== p.side);
-      if (!b) return 'Выберите вражеское здание';
-      this.pay(p, it.cost);
-      b.hp -= it.damage; b.lastHit = p.side;
-      this.ev({ k: 'boom', x: b.x, y: this.bldCenterY(b) });
     }
     return null;
   }
@@ -297,6 +324,7 @@ class Game {
       }
     }
 
+    for (const b of this.buildings) if (DATA.buildings[b.type].kind === 'tower') this.actTower(b);
     for (const u of this.units) if (u.hp > 0) this.actUnit(u);
     this.reap();
     if (this.over) return;
@@ -307,10 +335,47 @@ class Game {
     }
   }
 
+  calcDamage(def, armorType, armor) {
+    return randInt(def.damage[0], def.damage[1]) * DATA.damageTable[def.attackType][armorType] * 100 / (100 + 6 * armor);
+  }
+
+  actTower(b) {
+    const t = DATA.buildings[b.type].tower;
+    b.tcd = (b.tcd || 0) - DT;
+    let tgt = null, best = Infinity;
+    for (const e of this.units) {
+      if (e.o === b.o || e.hp <= 0) continue;
+      const d = Math.abs(e.x - b.x);
+      if (d <= t.reach && d < best) { best = d; tgt = e; }
+    }
+    if (!tgt || b.tcd > 0) return;
+    b.tcd = t.interval;
+    const td = DATA.units[tgt.type];
+    tgt.hp -= this.calcDamage(t, td.armorType, td.armor); tgt.lastHit = b.o;
+    this.ev({ k: 'a', x1: b.x, y1: b.y, x2: tgt.x, y2: tgt.y, r: 1, c: 0, o: b.o, tw: 1 });
+  }
+
+  // навыки магов: срабатывают, когда есть вражеский юнит в зоне атаки
+  castSkill(u, def, tgt) {
+    const sk = def.skill;
+    u.sk = sk.cooldown;
+    if (sk.type === 'nova') {
+      for (const e of this.units) {
+        if (e.o === u.o || e.hp <= 0 || Math.abs(e.x - tgt.x) > sk.radius) continue;
+        const td = DATA.units[e.type];
+        e.hp -= sk.damage * DATA.damageTable.Magic[td.armorType] * 100 / (100 + 6 * td.armor); e.lastHit = u.o;
+      }
+      this.ev({ k: 'nova', x: tgt.x, y: tgt.y, o: u.o });
+    } else if (sk.type === 'lust') {
+      for (const a of this.units) if (a.o === u.o && a.hp > 0 && Math.abs(a.x - u.x) <= sk.radius) a.lustU = this.t + sk.duration;
+      this.ev({ k: 'lust', x: u.x, y: u.y, o: u.o });
+    }
+  }
+
   actUnit(u) {
     const def = DATA.units[u.type];
     const reach = this.reach[u.type];
-    const aspd = 1 + (this.t < u.lodgeU ? DATA.buildings.spiritlodge.ability.bonus : 0) + (this.t < u.bloodU ? DATA.ults.orc.aspd : 0);
+    const aspd = 1 + (this.t < u.lodgeU ? DATA.buildings.spiritlodge.ability.bonus : 0) + (this.t < u.bloodU ? DATA.ults.orc.aspd : 0) + (this.t < u.lustU ? DATA.units.shaman.skill.aspd : 0);
     u.cd -= DT * aspd;
 
     // приоритет: юнит -> здание -> замок
@@ -339,6 +404,7 @@ class Game {
       u.y += Math.max(-L.unitDrift * DT, Math.min(L.unitDrift * DT, dy));
       return;
     }
+    if (def.skill) { u.sk -= DT; if (u.sk <= 0 && kind === 'u') this.castSkill(u, def, tgt); }
     if (u.cd > 0) return;
     u.cd = def.interval;
     this.attack(u, def, tgt, kind);
@@ -455,10 +521,10 @@ class Game {
         pr: DATA.buildings[b.type].interval ? Math.round((1 - b.spawnT / DATA.buildings[b.type].interval) * 100) / 100 : 0,
         cd: Math.ceil(b.cd)
       })),
-      bl: this.players.map(p => ({ x: Math.round(p.builder.x), y: Math.round(p.builder.y), m: p.builder.tx !== null || p.builder.orders.length ? 1 : 0, q: p.builder.orders.map(o => o.slot) })),
+      bl: this.players.map(p => ({ x: Math.round(p.builder.x), y: Math.round(p.builder.y), m: p.builder.tx !== null || p.builder.orders.length ? 1 : 0, rp: p.builder.rep ? 1 : 0, q: p.builder.orders.map(o => o.slot) })),
       u: this.units.map(u => [
         u.id, u.o, u.type, Math.round(u.x * 10) / 10, Math.round(u.y), Math.ceil(u.hp),
-        (this.t < u.drumU ? 1 : 0) | (this.t < u.lodgeU ? 2 : 0) | (this.t < u.bloodU ? 4 : 0)
+        (this.t < u.drumU ? 1 : 0) | (this.t < u.lodgeU ? 2 : 0) | (this.t < u.bloodU ? 4 : 0) | (this.t < u.lustU ? 8 : 0)
       ]),
       ev: this.events
     };

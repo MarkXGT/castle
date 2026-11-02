@@ -101,7 +101,7 @@
     <span class="chip">☠️ <b id="kills">0</b></span>
   </div>
   <div id="stage">
-    <canvas id="cv" width="1280" height="600"></canvas>
+    <canvas id="cv" width="1280" height="480"></canvas>
     <div id="banner" class="hidden"></div>
     <div id="toast"></div>
     <div id="endbox" class="hidden"></div>
@@ -215,7 +215,7 @@ const cost = c => [c.g ? c.g + '🪙' : '', c.c ? c.c + '💎' : ''].filter(Bool
 
 function unitInfo(k) {
   const u = DATA.units[k];
-  return `${u.name}: ${u.hp} HP, броня ${u.armor} (${u.armorType}), атака ${u.attackType} ${u.damage[0]}–${u.damage[1]}, DPS ${u.dps}, дальность ${u.range}`;
+  return `${u.name}: ${u.hp} HP, броня ${u.armor} (${u.armorType}), атака ${u.attackType} ${u.damage[0]}–${u.damage[1]}, DPS ${u.dps}, дальность ${u.range}` + (u.skill ? `. Навык ${u.skill.name}: ${u.skill.desc}` : '');
 }
 
 function buildStaticPanels() {
@@ -234,7 +234,7 @@ const myBlds = () => (snap ? snap.b.filter(b => b.o === mySide) : []);
 function onSnap() {
   const p = snap.p[mySide];
   $('gold').textContent = p.g;
-  $('inc').textContent = `(+${p.inc}/10с)`;
+  $('inc').textContent = `(+${p.inc}/${S.incomeInterval}с)`;
   $('crys').textContent = p.c;
   $('crysT').textContent = p.c < S.maxCrystals ? `(+1 через ${S.crystalRegen - p.ct}с)` : '(макс)';
   $('army').textContent = p.n;
@@ -289,15 +289,17 @@ function renderSel() {
   if (sig === selSig) return;
   selSig = sig;
   const el = $('selPanel');
-  if (!b) { el.innerHTML = '<h3>Выбор</h3><div class="dim"><b>ПКМ</b> — отправить строителя 👷.<br><b>ЛКМ по зданию</b> — улучшить, продать, способность.<br>Строить: кнопка здания (или 1–5) → клик по клетке базы.<br>Камера: WASD/стрелки, края экрана, миникарта; Пробел — к строителю.</div>'; return; }
+  if (!b) { el.innerHTML = '<h3>Выбор</h3><div class="dim"><b>ПКМ</b> — отправить строителя 👷 (по повреждённому зданию — чинить 🔧).<br><b>ЛКМ по зданию</b> — улучшить, продать, способность.<br>Строить: кнопка здания (или 1–5) → клик по клетке базы.<br>Камера: WASD/стрелки, края экрана, миникарта; Пробел — к строителю.</div>'; return; }
   const up = d.upgradeTo && DATA.buildings[d.upgradeTo];
   const ab = d.ability;
   let h = `<h3>${d.icon} ${d.name}</h3><div>HP ${b.hp}/${b.mh}</div>`;
   if (d.unit) h += `<div class="bar"><i style="width:${b.pr * 100}%"></i></div><div class="dim small">${unitInfo(d.unit)}</div>`;
   else h += `<div class="dim small">${d.desc}</div>`;
+  if (d.tower) h += '';
   h += '<div class="grid" style="margin-top:6px">';
   if (up) h += `<button class="gb ${canAfford(up.cost) ? '' : 'off'}" data-a="upgrade" title="${up.desc}"><b>⬆️ ${up.name}</b><small>${cost(up.cost)}</small></button>`;
   if (ab) h += `<button class="gb ${b.cd > 0 || !canAfford(ab.cost) ? 'off' : ''}" data-a="ability"><b>✨ ${ab.name}</b><small>${b.cd > 0 ? 'перезарядка ' + b.cd + 'с' : cost(ab.cost)}</small></button>`;
+  if (b.hp < b.mh) h += `<button class="gb" data-a="repair" title="Строитель подойдёт и починит. ${S.repairCostPerHp} З за 1 HP"><b>🔧 Чинить</b><small>~${Math.ceil((b.mh - b.hp) * S.repairCostPerHp)}🪙</small></button>`;
   h += `<button class="gb" data-a="sell"><b>💰 Продать</b><small>+${Math.floor(sellValue(b) * S.sellRefund)}🪙</small></button></div>`;
   el.innerHTML = h;
 }
@@ -332,6 +334,7 @@ function panelClick(e) {
   }
   else if (a === 'ult') send({ t: 'cmd', c: { c: 'ult' } });
   else if (a === 'upgrade') send({ t: 'cmd', c: { c: 'upgrade', id: selected } });
+  else if (a === 'repair') send({ t: 'cmd', c: { c: 'repair', id: selected } });
   else if (a === 'sell') { send({ t: 'cmd', c: { c: 'sell', id: selected } }); selected = null; selSig = ''; }
   else if (a === 'ability') {
     const b = snap.b.find(x => x.id === selected), ab = DATA.buildings[b.ty].ability;
@@ -341,20 +344,18 @@ function panelClick(e) {
 ['buildPanel', 'selPanel', 'shopPanel'].forEach(id => $(id).addEventListener('pointerdown', panelClick));
 
 // ---------- изометрическая проекция 2:1 ----------
-const VW = 1280, VH = 600, K1 = 0.62, K2 = 0.31;
+const VW = 1280, VH = 480, KX = 1.0, KY = 0.62, OFFY = 70;   // вид слева направо, наклон камеры
 const cv = $('cv');
 let camX = 0, follow = true, camY = 0;
 const MM = { x: VW - 336, y: 8, w: 320, h: 120, k: 0.2 };
 const mirror = x => (mySide === 1 ? W - x : x);          // правый игрок видит карту зеркально
-const org = () => L.worldH * K1;
-const rawP = (m, wy) => ({ x: (m - wy) * K1 + org(), y: (m + wy) * K2 });   // зеркальные мировые -> экран без камеры
+const rawP = (m, wy) => ({ x: m * KX, y: wy * KY + OFFY });   // зеркальные мировые -> экран без камеры
 const Pm = (m, wy) => { const r = rawP(m, wy); return { x: r.x - camX, y: r.y - camY }; };
 const P = (wx, wy) => Pm(mirror(wx), wy);
 function unP(px, py) {                                    // экран -> мировые (x, y) на земле
-  const u = (px + camX - org()) / K1, v = (py + camY) / K2;
-  return { x: mirror((u + v) / 2), y: (v - u) / 2 };
+  return { x: mirror((px + camX) / KX), y: (py + camY - OFFY) / KY };
 }
-const mapW = () => (W + L.worldH) * K1, mapH = () => (W + L.worldH) * K2;
+const mapW = () => W * KX, mapH = () => L.worldH * KY + OFFY + 40;
 const clampCam = () => { camX = Math.max(0, Math.min(Math.max(0, mapW() - VW), camX)); camY = Math.max(0, Math.min(Math.max(0, mapH() - VH), camY)); };
 
 function slotPos(side, i) {
@@ -385,6 +386,8 @@ cv.addEventListener('contextmenu', e => {
   if (!snap) return;
   if (mode) { setMode(null); return; }
   if (inMM(canvasPt(e))) return;
+  const own = bldAt(e, true);
+  if (own && own.hp < own.mh) { send({ t: 'cmd', c: { c: 'repair', id: own.id } }); return; }
   const p = toWorld(e);
   send({ t: 'cmd', c: { c: 'move', x: p.x, y: p.y } });
   pushFx({ k: 'mv', x: p.x, y: p.y });
@@ -396,7 +399,7 @@ cv.addEventListener('pointermove', e => {
 cv.addEventListener('pointerleave', () => { mouse.in = false; mmDrag = false; });
 window.addEventListener('pointerup', () => { mmDrag = false; });
 // здания объёмные: для выбора смещаем точку клика вниз к основанию
-const bldPoint = e => { const c = canvasPt(e); const w = unP(c.px, c.py + 16); return w; };
+const bldAt = (e, own) => { const c = canvasPt(e); return snap.b.find(b => (b.o === mySide) === own && (() => { const s = slotPos(b.o, b.s), q = P(s.x, s.y); return Math.abs(c.px - q.x) <= 26 && c.py >= q.y - 52 && c.py <= q.y + 14; })()); };
 cv.addEventListener('pointerdown', e => {
   if (!snap || e.button !== 0) return;
   const c = canvasPt(e);
@@ -415,22 +418,17 @@ cv.addEventListener('pointerdown', e => {
       let best = null, bd = 45;
       for (const u of snap.u) if (u[1] === mySide) { const d = Math.hypot(u[3] - q.x, u[4] - q.y); if (d < bd) { bd = d; best = u; } }
       if (best) { send({ t: 'cmd', c: { c: 'item', item: 'salve', target: best[0] } }); setMode(null); } else toast('Нужен свой юнит');
-    } else if (mode.k === 'charge') {
-      const q = bldPoint(e);
-      const b = snap.b.find(b => b.o !== mySide && bldHit(b, q));
-      if (b) { send({ t: 'cmd', c: { c: 'item', item: 'charge', target: b.id } }); setMode(null); } else toast('Нужно вражеское здание');
     }
     return;
   }
-  const q = bldPoint(e);
-  const b = snap.b.find(b => b.o === mySide && bldHit(b, q));
+  const b = bldAt(e, true);
   selected = b ? b.id : null; selSig = ''; renderSel();
 });
 function bldHit(b, p) { const s = slotPos(b.o, b.s); return Math.abs(p.x - s.x) <= L.cell / 2 && Math.abs(p.y - s.y) <= L.cell / 2; }
 
 // ---------- эффекты ----------
 function pushFx(e) {
-  fx.push({ ...e, t0: performance.now(), dur: { a: 180, d: 400, t: 900, h: 600, boom: 500, ring: 600, ult: 900, mv: 600 }[e.k] || 400 });
+  fx.push({ ...e, t0: performance.now(), dur: { a: 180, d: 400, t: 900, h: 600, boom: 500, ring: 600, ult: 900, mv: 600, nova: 600, lust: 700 }[e.k] || 400 });
   if (fx.length > 300) fx.splice(0, fx.length - 300);
 }
 
@@ -453,12 +451,11 @@ function groundQuad(x0, x1, y0, y1, fill, stroke, lw) {
   poly([Pm(a, y0), Pm(b, y0), Pm(b, y1), Pm(a, y1)], fill, stroke, lw);
 }
 const lift = (p, h) => ({ x: p.x, y: p.y - h });
-// объёмный параллелепипед; mc, wc — центр в зеркальных координатах
+// объёмный блок: передняя стенка + крыша; mc, wc — центр в зеркальных координатах
 function box(mc, wc, dx, dy, h, top, left, right) {
-  const back = Pm(mc - dx, wc - dy), r = Pm(mc + dx, wc - dy), f = Pm(mc + dx, wc + dy), l = Pm(mc - dx, wc + dy);
-  poly([l, f, lift(f, h), lift(l, h)], left, 'rgba(0,0,0,.35)');
-  poly([f, r, lift(r, h), lift(f, h)], right, 'rgba(0,0,0,.35)');
-  poly([lift(back, h), lift(r, h), lift(f, h), lift(l, h)], top, 'rgba(0,0,0,.4)');
+  const b0 = Pm(mc - dx, wc - dy), b1 = Pm(mc + dx, wc - dy), f0 = Pm(mc - dx, wc + dy), f1 = Pm(mc + dx, wc + dy);
+  poly([f0, f1, lift(f1, h), lift(f0, h)], left, 'rgba(0,0,0,.4)');
+  poly([lift(b0, h), lift(b1, h), lift(f1, h), lift(f0, h)], top, 'rgba(0,0,0,.45)');
   return Pm(mc, wc);
 }
 
@@ -529,7 +526,7 @@ function drawSlotsOverlay() {
   }
   if (placing) { // радиус стройки вокруг строителя
     const b = snap.bl[mySide], c = P(b.x, b.y);
-    ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.ellipse(c.x, c.y, L.buildRange * K1 * 1.414, L.buildRange * K2 * 1.414, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.ellipse(c.x, c.y, L.buildRange * KX, L.buildRange * KY, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
   }
 }
 
@@ -545,6 +542,7 @@ function drawBuilder(side, dt) {
   emoji('👷', c.x, c.y - 15, 20);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText(side === mySide ? 'Вы' : names[side], c.x, c.y - 42);
+  if (t.rp) emoji('🔧', c.x + 18, c.y - 34 + Math.sin(performance.now() / 80) * 4, 18);
 }
 
 function drawUnit(u, dt) {
@@ -555,7 +553,7 @@ function drawUnit(u, dt) {
   const def = DATA.units[ty], c = P(d.x, d.y);
   ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 11, 5, 0, 0, 7); ctx.fill();
   ctx.fillStyle = teamCol(o); ctx.beginPath(); ctx.arc(c.x, c.y - 12, 12, 0, 7); ctx.fill();
-  ctx.strokeStyle = fl & 4 ? '#f97316' : fl & 2 ? '#a78bfa' : fl & 1 ? '#facc15' : '#0b0f1a'; ctx.lineWidth = fl ? 3 : 1.5; ctx.stroke(); ctx.lineWidth = 1;
+  ctx.strokeStyle = fl & 4 ? '#f97316' : fl & 8 ? '#34d399' : fl & 2 ? '#a78bfa' : fl & 1 ? '#facc15' : '#0b0f1a'; ctx.lineWidth = fl ? 3 : 1.5; ctx.stroke(); ctx.lineWidth = 1;
   emoji(def.icon, c.x, c.y - 11, 14);
   if (hp < def.hp) hpBar(c.x, c.y - 31, 26, hp, def.hp);
 }
@@ -576,6 +574,8 @@ function drawFx(now) {
     else if (e.k === 't') { if (e.o === mySide) { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.fillStyle = '#facc15'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(e.s, c.x, c.y - 24 - a * 24); ctx.globalAlpha = 1; } }
     else if (e.k === 'ring') { ctx.globalAlpha = 1 - a; groundQuad(e.x - S.areaRadius, e.x + S.areaRadius, L.laneY - 70, L.laneY + 70, 'rgba(255,255,255,.12)', e.c, 4); ctx.globalAlpha = 1; }
     else if (e.k === 'mv') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(c.x, c.y, (4 + a * 14) * 1.6, (4 + a * 14) * .8, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'nova') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(c.x, c.y, 110 * KX * (.3 + a * .7), 110 * KY * (.3 + a * .7), 0, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(125,211,252,.25)'; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'lust') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#34d399'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(c.x, c.y, 220 * KX * (.2 + a * .8), 220 * KY * (.2 + a * .8), 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
     else if (e.k === 'ult') { ctx.globalAlpha = (1 - a) * 0.25; ctx.fillStyle = e.o === mySide ? '#3b82f6' : '#ef4444'; ctx.fillRect(0, 0, VW, VH); ctx.globalAlpha = 1; }
   }
 }
@@ -629,12 +629,12 @@ function frame(now) {
     drawBg();
     drawSlotsOverlay();
     const items = [];
-    for (const s of [0, 1]) items.push({ y: mirror(s === 0 ? L.castleX : W - L.castleX) + L.laneY + 30, f: () => drawCastle(s) });
-    for (const b of snap.b) items.push({ y: mirror(slotPos(b.o, b.s).x) + slotPos(b.o, b.s).y + 19, f: () => drawBuilding(b) });
+    for (const s of [0, 1]) items.push({ y: L.laneY + 30, f: () => drawCastle(s) });
+    for (const b of snap.b) items.push({ y: slotPos(b.o, b.s).y + 19, f: () => drawBuilding(b) });
     const seen = new Set();
-    for (const u of snap.u) { seen.add(u[0]); items.push({ y: mirror(u[3]) + u[4], f: () => drawUnit(u, dt) }); }
+    for (const u of snap.u) { seen.add(u[0]); items.push({ y: u[4], f: () => drawUnit(u, dt) }); }
     for (const id of disp.keys()) if (!seen.has(id)) disp.delete(id);
-    for (const s of [0, 1]) items.push({ y: mirror(snap.bl[s].x) + snap.bl[s].y, f: () => drawBuilder(s, dt) });
+    for (const s of [0, 1]) items.push({ y: snap.bl[s].y, f: () => drawBuilder(s, dt) });
     items.sort((a, b) => a.y - b.y);
     for (const it of items) it.f();
     drawFx(now);
