@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Castle Musou</title>
+<style>
+  :root { --bg:#12151c; --panel:#1b2030; --panel2:#242b40; --line:#33405e; --txt:#e8ecf5; --dim:#8b97b5; --me:#3b82f6; --foe:#ef4444; --gold:#facc15; --crys:#38bdf8; --ok:#4ade80; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--txt); font:14px/1.35 system-ui,Segoe UI,Roboto,sans-serif; }
+  .hidden { display:none !important; }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  input { font:inherit; }
+  .screen { max-width:1200px; margin:0 auto; padding:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px; max-width:480px; margin:8vh auto 0; }
+  .card h1 { margin:0 0 4px; font-size:28px; }
+  .card p { color:var(--dim); margin:0 0 16px; }
+  .row { display:flex; gap:8px; margin:10px 0; align-items:center; flex-wrap:wrap; }
+  .row > input { flex:1; min-width:0; }
+  input[type=text] { background:#0f1320; border:1px solid var(--line); border-radius:8px; padding:10px; color:var(--txt); }
+  .btn { background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px 14px; }
+  .btn:hover:not(:disabled) { border-color:#6b82b8; }
+  .btn.primary { background:#2c5ee8; border-color:#4a78ff; font-weight:600; }
+  .btn.sel { outline:2px solid var(--ok); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .seg { display:flex; gap:8px; } .seg .btn { flex:1; }
+  .plist { margin:12px 0; } .pl { display:flex; justify-content:space-between; padding:8px 10px; background:var(--panel2); border-radius:8px; margin-bottom:6px; }
+  .code { font-size:34px; letter-spacing:6px; font-weight:700; color:var(--gold); }
+  .dim { color:var(--dim); } .small { font-size:12px; }
+
+  #topbar { display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin-bottom:6px; }
+  .hp { position:relative; height:26px; background:#0f1320; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .hp i { position:absolute; inset:0 auto 0 0; background:var(--me); transition:width .2s; }
+  .hp.foe i { background:var(--foe); right:0; left:auto; inset:0 0 0 auto; }
+  .hp span { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:600; text-shadow:0 1px 2px #000; }
+  #timer { font-size:22px; font-weight:700; min-width:80px; text-align:center; }
+  #res { display:flex; gap:16px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
+  #res .chip { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:5px 10px; }
+  #stage { position:relative; }
+  canvas { width:100%; height:auto; display:block; background:#000; border-radius:10px; border:1px solid var(--line); touch-action:none; }
+  #banner { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); padding:6px 14px; border-radius:20px; pointer-events:none; }
+  #toast { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:#b91c1c; padding:6px 14px; border-radius:8px; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #toast.on { opacity:1; }
+  #bottom { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:8px; margin-top:8px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px; min-height:120px; }
+  .panel h3 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:6px; }
+  .gb { display:flex; flex-direction:column; align-items:flex-start; gap:1px; text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+  .gb:hover:not(.off) { border-color:#6b82b8; }
+  .gb.off { opacity:.45; } .gb.act { outline:2px solid var(--ok); }
+  .gb b { font-size:13px; } .gb small { color:var(--dim); }
+  .bar { height:6px; background:#0f1320; border-radius:3px; overflow:hidden; margin:3px 0; } .bar i { display:block; height:100%; background:var(--ok); }
+  #endbox { position:absolute; inset:0; background:rgba(8,10,16,.82); display:flex; align-items:center; justify-content:center; border-radius:10px; }
+  #endbox .card { margin:0; text-align:center; max-width:520px; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; } td,th { padding:4px 8px; border-bottom:1px solid var(--line); text-align:center; } th { color:var(--dim); font-weight:500; }
+  .gauge { display:inline-block; width:90px; height:9px; background:#0f1320; border:1px solid var(--line); border-radius:5px; overflow:hidden; vertical-align:middle; } .gauge i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#fde047); }
+  @media (max-width:800px){ #bottom { grid-template-columns:1fr; } #topbar { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<div id="menu" class="screen">
+  <div class="card">
+    <h1>⚔️ Castle Musou</h1>
+    <p>1 на 1: здания выпускают толпы бойцов, а ваш герой косит армию врага. Разрушьте замок противника.</p>
+    <div class="row"><input type="text" id="name" maxlength="16" placeholder="Ваше имя"></div>
+    <div class="seg" id="menuFaction">
+      <button class="btn sel" data-f="human">⚔️ Люди</button>
+      <button class="btn" data-f="orc">🪓 Орки</button>
+    </div>
+    <div class="row"><button class="btn primary" id="bCreate" style="flex:1">Создать комнату</button></div>
+    <div class="row"><input type="text" id="codeIn" maxlength="4" placeholder="Код комнаты" style="text-transform:uppercase"><button class="btn" id="bJoin">Войти</button></div>
+    <div class="row"><button class="btn" id="bBot" style="flex:1">Тренировка с ботом</button></div>
+    <div class="dim small" id="menuMsg"></div>
+  </div>
+</div>
+
+<div id="lobby" class="screen hidden">
+  <div class="card">
+    <div class="dim">Код комнаты — отправьте его другу</div>
+    <div class="code" id="lobCode">----</div>
+    <div class="row"><button class="btn" id="bCopy">Скопировать ссылку</button></div>
+    <div class="plist" id="lobPlayers"></div>
+    <div class="seg" id="lobFaction">
+      <button class="btn" data-f="human">⚔️ Люди</button>
+      <button class="btn" data-f="orc">🪓 Орки</button>
+    </div>
+    <div class="row"><button class="btn primary" id="bReady" style="flex:1">Готов</button><button class="btn" id="bLeave">Выйти</button></div>
+  </div>
+</div>
+
+<div id="game" class="screen hidden">
+  <div id="topbar">
+    <div><div class="dim small" id="myName"></div><div class="hp"><i id="myHpBar"></i><span id="myHpTxt"></span></div></div>
+    <div id="timer">12:00</div>
+    <div><div class="dim small" style="text-align:right" id="foeName"></div><div class="hp foe"><i id="foeHpBar"></i><span id="foeHpTxt"></span></div></div>
+  </div>
+  <div id="res">
+    <span class="chip">🪙 <b id="gold">0</b> <span class="dim small" id="inc"></span></span>
+    <span class="chip">💎 <b id="crys">0</b> <span class="dim small" id="crysT"></span></span>
+    <span class="chip">👥 <b id="army">0</b>/100</span>
+    <span class="chip">☠️ <b id="kills">0</b></span>
+    <span class="chip" id="heroChip"></span>
+  </div>
+  <div id="stage">
+    <canvas id="cv" width="1280" height="480"></canvas>
+    <div id="banner" class="hidden"></div>
+    <div id="toast"></div>
+    <div id="endbox" class="hidden"></div>
+  </div>
+  <div id="bottom">
+    <div class="panel"><h3>Здания</h3><div class="grid" id="buildPanel"></div></div>
+    <div class="panel" id="selPanel"></div>
+    <div class="panel"><h3>Магазин и ультимейт</h3><div class="grid" id="shopPanel"></div></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+let DATA, S, L, W;
+let ws = null, wsOpen = false;
+let mySide = 0, roomCode = null, myToken = null, factions = ['human', 'orc'], names = ['', ''];
+let menuFaction = 'human';
+let snap = null, snapAt = 0, ended = null;
+let selected = null;        // id выбранного здания
+let mode = null;            // {k:'place'|'heal'|'drum'|'salve'|'charge', ...}
+let mouse = { x: 0, y: 0, in: false };
+const disp = new Map();     // id -> сглаженная позиция юнита
+const fx = [];
+
+// ---------- сеть ----------
+const store = {
+  get() { try { return JSON.parse(sessionStorage.getItem('cf') || 'null'); } catch { return null; } },
+  set(v) { try { v ? sessionStorage.setItem('cf', JSON.stringify(v)) : sessionStorage.removeItem('cf'); } catch {} }
+};
+function send(o) { if (ws && wsOpen) ws.send(JSON.stringify(o)); }
+
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => {
+    wsOpen = true; $('menuMsg').textContent = '';
+    const s = store.get();
+    if (s) send({ t: 'join', code: s.code, token: s.token, name: $('name').value });
+  };
+  ws.onclose = () => { wsOpen = false; $('menuMsg').textContent = 'Нет соединения, переподключаюсь…'; setTimeout(connect, 1500); };
+  ws.onmessage = e => onMsg(JSON.parse(e.data));
+}
+setInterval(() => send({ t: 'ping' }), 20000);
+
+function onMsg(m) {
+  switch (m.t) {
+    case 'joined':
+      mySide = m.side; roomCode = m.code; myToken = m.token;
+      store.set({ code: m.code, token: m.token });
+      history.replaceState(null, '', '?room=' + m.code);
+      break;
+    case 'lobby': renderLobby(m); break;
+    case 'start':
+      factions = m.factions; names = m.names; startMatch(); break;
+    case 's': snap = m; snapAt = performance.now(); onSnap(); break;
+    case 'end': ended = m; showEnd(); break;
+    case 'rematchWait': if (m.side === mySide) { const b = $('bRematch'); if (b) { b.disabled = true; b.textContent = 'Ждём соперника…'; } } break;
+    case 'opponentLeft': { const b = $('bRematch'); if (b) { b.disabled = true; b.textContent = 'Соперник вышел'; } } break;
+    case 'err':
+      toast(m.msg);
+      if (m.fatal) { store.set(null); show('menu'); $('menuMsg').textContent = m.msg; }
+      break;
+  }
+}
+
+// ---------- экраны ----------
+function show(id) { for (const s of ['menu', 'lobby', 'game']) $(s).classList.toggle('hidden', s !== id); }
+let toastT;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1800); }
+
+function setFactionButtons(box, f) { box.querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.f === f)); }
+
+$('menuFaction').onclick = e => { const b = e.target.closest('button'); if (!b) return; menuFaction = b.dataset.f; setFactionButtons($('menuFaction'), menuFaction); };
+const myName = () => { const n = $('name').value.trim(); try { localStorage.setItem('cfName', n); } catch {} return n || 'Игрок'; };
+$('bCreate').onclick = () => send({ t: 'create', name: myName(), faction: menuFaction });
+$('bBot').onclick = () => send({ t: 'bot', name: myName(), faction: menuFaction });
+$('bJoin').onclick = () => { const c = $('codeIn').value.trim().toUpperCase(); if (c.length === 4) send({ t: 'join', code: c, name: myName(), faction: menuFaction }); };
+$('codeIn').onkeydown = e => { if (e.key === 'Enter') $('bJoin').click(); };
+$('lobFaction').onclick = e => { const b = e.target.closest('button'); if (b) send({ t: 'faction', faction: b.dataset.f }); };
+let amReady = false;
+$('bReady').onclick = () => send({ t: 'ready', ready: !amReady });
+$('bLeave').onclick = leaveRoom;
+$('bCopy').onclick = () => { const u = location.origin + '/?room=' + roomCode; navigator.clipboard && navigator.clipboard.writeText(u); toast('Ссылка скопирована'); };
+function leaveRoom() { send({ t: 'leave' }); store.set(null); history.replaceState(null, '', '/'); snap = null; ended = null; show('menu'); }
+
+function renderLobby(m) {
+  if (!$('game').classList.contains('hidden') && m.state === 'playing') return;
+  show('lobby');
+  $('lobCode').textContent = m.code;
+  $('lobPlayers').innerHTML = m.players.map((p, i) => p
+    ? `<div class="pl"><span>${i === mySide ? '👤 ' : '🎮 '}${p.name} — ${DATA.factions[p.faction]}</span><span>${p.ready ? '✅ готов' : '⏳'}${p.online ? '' : ' (офлайн)'}</span></div>`
+    : `<div class="pl dim"><span>Ждём второго игрока…</span></div>`).join('');
+  const me = m.players[mySide];
+  amReady = !!(me && me.ready);
+  setFactionButtons($('lobFaction'), me && me.faction);
+  $('bReady').textContent = amReady ? 'Не готов' : 'Готов';
+  $('bReady').disabled = !m.players[1];
+}
+
+// ---------- матч ----------
+function startMatch() {
+  ended = null; snap = null; selected = null; mode = null; disp.clear(); fx.length = 0; hdisp[0] = hdisp[1] = null; follow = true; camX = 0; camY = 0;
+  $('endbox').classList.add('hidden');
+  show('game');
+  $('myName').textContent = names[mySide] + ' · ' + DATA.factions[factions[mySide]];
+  $('foeName').textContent = names[1 - mySide] + ' · ' + DATA.factions[factions[1 - mySide]];
+  buildStaticPanels();
+}
+
+const cost = c => [c.g ? c.g + '🪙' : '', c.c ? c.c + '💎' : ''].filter(Boolean).join(' ');
+
+function unitInfo(k) {
+  const u = DATA.units[k];
+  return `${u.name}: ${u.hp} HP, броня ${u.armor} (${u.armorType}), атака ${u.attackType} ${u.damage[0]}–${u.damage[1]}, DPS ${u.dps}, дальность ${u.range}` + (u.skill ? `. Навык ${u.skill.name}: ${u.skill.desc}` : '');
+}
+
+function buildStaticPanels() {
+  const f = factions[mySide];
+  $('buildPanel').innerHTML = Object.entries(DATA.buildings).filter(([k, b]) => b.faction === f && !b.upgradeOnly).map(([k, b]) =>
+    `<button class="gb" data-a="build" data-k="${k}" title="${b.desc}${b.unit ? '\n' + unitInfo(b.unit) : ''}"><b>${b.icon} ${b.name}</b><small>${cost(b.cost)}</small></button>`).join('');
+  const ult = DATA.ults[f];
+  $('shopPanel').innerHTML = Object.entries(DATA.items).map(([k, i]) =>
+    `<button class="gb" data-a="item" data-k="${k}" title="${i.desc}"><b>${i.icon} ${i.name}</b><small>${cost(i.cost)}</small></button>`).join('')
+    + `<button class="gb" data-a="ult" id="ultBtn" title="${ult.desc}"><b>${ult.icon} ${ult.name}</b><small id="ultTxt"></small><div class="bar" style="width:100%"><i id="ultBar" style="width:0"></i></div></button>`;
+}
+
+function canAfford(c) { const p = snap && snap.p[mySide]; return p && p.g >= (c.g || 0) && p.c >= (c.c || 0); }
+const myBlds = () => (snap ? snap.b.filter(b => b.o === mySide) : []);
+
+function onSnap() {
+  const p = snap.p[mySide];
+  $('gold').textContent = p.g;
+  $('inc').textContent = `(+${p.inc}/${S.incomeInterval}с)`;
+  $('crys').textContent = p.c;
+  $('crysT').textContent = p.c < S.maxCrystals ? `(+1 через ${S.crystalRegen - p.ct}с)` : '(макс)';
+  $('army').textContent = p.n;
+  $('kills').textContent = p.k;
+  const left = Math.max(0, S.matchSeconds - snap.tm);
+  $('timer').textContent = Math.floor(left / 60) + ':' + String(Math.floor(left % 60)).padStart(2, '0');
+  const set = (bar, txt, hp) => { $(bar).style.width = (hp / S.castleHp * 100) + '%'; $(txt).textContent = hp + ' / ' + S.castleHp; };
+  set('myHpBar', 'myHpTxt', snap.ch[mySide]); set('foeHpBar', 'foeHpTxt', snap.ch[1 - mySide]);
+
+  const ban = $('banner');
+  if (snap.pause) { ban.textContent = `Соперник отключился — ждём ${snap.pause.left} с`; ban.classList.remove('hidden'); }
+  else if (mode) { ban.textContent = modeHint(); ban.classList.remove('hidden'); }
+  else ban.classList.add('hidden');
+
+  // кнопки: доступность
+  const have = new Set(myBlds().map(b => b.ty));
+  $('buildPanel').querySelectorAll('button').forEach(btn => {
+    const d = DATA.buildings[btn.dataset.k];
+    btn.classList.toggle('off', !canAfford(d.cost) || (d.requires && !have.has(d.requires)));
+    btn.classList.toggle('act', !!(mode && mode.k === 'place' && mode.type === btn.dataset.k));
+  });
+  $('shopPanel').querySelectorAll('button[data-a=item]').forEach(btn => {
+    btn.classList.toggle('off', !canAfford(DATA.items[btn.dataset.k].cost));
+    btn.classList.toggle('act', !!(mode && mode.item === btn.dataset.k));
+  });
+  const ult = DATA.ults[factions[mySide]];
+  const ready = p.u >= S.ultMax && p.uc <= 0;
+  $('ultBar').style.width = p.u + '%';
+  $('ultTxt').textContent = p.uc > 0 ? `перезарядка ${p.uc}с` : (p.u >= S.ultMax ? 'ГОТОВ · ' : p.u + '% · ') + cost(ult.cost);
+  $('ultBtn').classList.toggle('off', !ready || !canAfford(ult.cost));
+
+  const hr = snap.hr[mySide], hd = DATA.heroes[factions[mySide]], sk = hd.skill;
+  $('heroChip').innerHTML = hr.d
+    ? `${hd.icon} ${hd.name} ур.${hr.lv} — возрождение через <b>${hr.rt}</b> с`
+    : `${hd.icon} <b>${hd.name}</b> ур.${hr.lv}/${S.maxLevel} · ❤️ ${hr.hp}/${hr.mh} · 💥 KO <b>${hr.ko}</b>${hr.cb > 1 ? ' · 🔥 COMBO ' + hr.cb : ''} · Musou <span class="gauge"><i style="width:${hr.mg}%"></i></span> <button class="gb ${hr.mg >= 100 ? 'act' : 'off'}" data-a="hskill" title="${sk.desc}" style="display:inline-flex;flex-direction:row;gap:6px;padding:3px 8px"><b>[Q] ${sk.name}</b><small>${hr.mg >= 100 ? 'ГОТОВО' : hr.mg + '%'}</small></button>`;
+  for (const e of snap.ev) pushFx(e);
+  renderSel();
+}
+
+function modeHint() {
+  switch (mode.k) {
+    case 'place': return 'Кликните клетку на своей базе (Shift — несколько, Esc/ПКМ — отмена)';
+    case 'heal': return 'Кликните область на поле для лечения';
+    case 'drum': return 'Кликните область на поле для War Drum';
+    case 'salve': return 'Кликните своего юнита или героя';
+    case 'charge': return 'Кликните вражеское здание';
+  }
+}
+
+let selSig = '';
+function renderSel() {
+  const b = snap.b.find(x => x.id === selected && x.o === mySide);
+  if (!b) selected = null;
+  const d = b && DATA.buildings[b.ty];
+  const sig = b ? [b.id, b.ty, b.cd, Math.round(b.hp / 10), Math.round(b.pr * 20), snap.p[mySide].g >> 3, snap.p[mySide].c].join() : 'none';
+  if (sig === selSig) return;
+  selSig = sig;
+  const el = $('selPanel');
+  if (!b) { el.innerHTML = '<h3>Управление</h3><div class="dim"><b>WASD</b> — двигать героя. <b>Удерживайте ЛКМ или Пробел</b> — бить по дуге в сторону курсора; каждый 4-й удар в комбо — круговой финишер с отбрасыванием.<br>Удары наполняют шкалу <b>Musou</b>; при 100% нажмите <b>Q</b> — взрыв вокруг героя.<br>Герой косит врагов и нейтралов (не бьёт здания): расчищайте путь своей армии. KO дают опыт.<br>Здания: кнопка (или 1–6) → клик по клетке своей базы, из любой точки. ПКМ по повреждённому зданию — чинить. Камера: стрелки, миникарта.</div>'; return; }
+  const up = d.upgradeTo && DATA.buildings[d.upgradeTo];
+  const ab = d.ability;
+  let h = `<h3>${d.icon} ${d.name}</h3><div>HP ${b.hp}/${b.mh}</div>`;
+  if (d.unit) h += `<div class="bar"><i style="width:${b.pr * 100}%"></i></div><div class="dim small">${unitInfo(d.unit)}</div>`;
+  else h += `<div class="dim small">${d.desc}</div>`;
+  if (d.tower) h += '';
+  h += '<div class="grid" style="margin-top:6px">';
+  if (up) h += `<button class="gb ${canAfford(up.cost) ? '' : 'off'}" data-a="upgrade" title="${up.desc}"><b>⬆️ ${up.name}</b><small>${cost(up.cost)}</small></button>`;
+  if (ab) h += `<button class="gb ${b.cd > 0 || !canAfford(ab.cost) ? 'off' : ''}" data-a="ability"><b>✨ ${ab.name}</b><small>${b.cd > 0 ? 'перезарядка ' + b.cd + 'с' : cost(ab.cost)}</small></button>`;
+  if (b.hp < b.mh) h += `<button class="gb" data-a="repair" title="Строитель подойдёт и починит. ${S.repairCostPerHp} З за 1 HP"><b>🔧 Чинить</b><small>~${Math.ceil((b.mh - b.hp) * S.repairCostPerHp)}🪙</small></button>`;
+  h += `<button class="gb" data-a="sell"><b>💰 Продать</b><small>+${Math.floor(sellValue(b) * S.sellRefund)}🪙</small></button></div>`;
+  el.innerHTML = h;
+}
+function sellValue(b) {
+  let v = 0, t = b.ty;
+  const chain = { stronghold: 'barracks', ostronghold: 'warhut' };
+  v += DATA.buildings[t].cost.g || 0;
+  if (chain[t]) v += DATA.buildings[chain[t]].cost.g || 0;
+  return v;
+}
+
+// ---------- ввод ----------
+function setMode(m) { mode = m; selSig = ''; if (snap) onSnap(); }
+const keys = new Set();
+const held = new Set();
+let atkHeld = false, spaceHeld = false;
+setInterval(() => {                       // удержание атаки: шлём точку прицела ~11 раз/с
+  if (!snap || !(atkHeld || spaceHeld)) return;
+  const h = snap.hr[mySide];
+  if (h.d) return;
+  const aimMouse = mouse.in && typeof mouse.x === 'number';
+  send({ t: 'cmd', c: { c: 'hatk', ax: aimMouse ? mouse.x : h.x + (mySide === 1 ? -100 : 100), ay: aimMouse ? mouse.y : h.y } });
+}, 90);
+let lastDir = '0,0';
+function sendHeroDir() {
+  if (!snap) return;
+  const dxs = (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0), dy = (held.has('s') ? 1 : 0) - (held.has('w') ? 1 : 0);
+  const dx = dxs * (mySide === 1 ? -1 : 1);   // зеркальная камера у правого игрока
+  const key = dx + ',' + dy;
+  if (key !== lastDir) { lastDir = key; send({ t: 'cmd', c: { c: 'hmove', dx, dy } }); }
+}
+const CODE = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd' };
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (CODE[e.code]) { held.add(CODE[e.code]); follow = true; sendHeroDir(); e.preventDefault(); }
+  else if (e.code === 'KeyQ') send({ t: 'cmd', c: { c: 'hskill' } });
+  else if (e.key === 'Escape') setMode(null);
+  else if (e.code === 'Space') { spaceHeld = true; e.preventDefault(); }
+  else if (/^[1-9]$/.test(e.key)) { const b = $('buildPanel').querySelectorAll('button')[+e.key - 1]; if (b) b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); }
+  else if (e.key.startsWith('Arrow')) { keys.add(e.key.toLowerCase()); e.preventDefault(); }
+});
+document.addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; if (CODE[e.code]) { held.delete(CODE[e.code]); sendHeroDir(); } keys.delete(e.key.toLowerCase()); });
+window.addEventListener('blur', () => { spaceHeld = atkHeld = false; held.clear(); keys.clear(); sendHeroDir(); });
+$('heroChip').addEventListener('pointerdown', e => { if (e.target.closest('[data-a=hskill]')) send({ t: 'cmd', c: { c: 'hskill' } }); });
+
+function panelClick(e) {
+  const btn = e.target.closest('button[data-a]');
+  if (!btn || !snap) return;
+  const a = btn.dataset.a, k = btn.dataset.k;
+  if (a === 'build') setMode(mode && mode.type === k ? null : { k: 'place', type: k });
+  else if (a === 'item') {
+    const t = DATA.items[k].target;
+    setMode(mode && mode.item === k ? null : { k: { unit: 'salve', area: 'drum', enemyBuilding: 'charge' }[t], item: k });
+  }
+  else if (a === 'ult') send({ t: 'cmd', c: { c: 'ult' } });
+  else if (a === 'upgrade') send({ t: 'cmd', c: { c: 'upgrade', id: selected } });
+  else if (a === 'repair') send({ t: 'cmd', c: { c: 'repair', id: selected } });
+  else if (a === 'sell') { send({ t: 'cmd', c: { c: 'sell', id: selected } }); selected = null; selSig = ''; }
+  else if (a === 'ability') {
+    const b = snap.b.find(x => x.id === selected), ab = DATA.buildings[b.ty].ability;
+    if (ab.area) setMode({ k: 'heal', id: selected }); else send({ t: 'cmd', c: { c: 'ability', id: selected } });
+  }
+}
+['buildPanel', 'selPanel', 'shopPanel'].forEach(id => $(id).addEventListener('pointerdown', panelClick));
+
+// ---------- изометрическая проекция 2:1 ----------
+const VW = 1280, VH = 480, KX = 1.0, KY = 0.62, OFFY = 70;   // вид слева направо, наклон камеры
+const cv = $('cv');
+let camX = 0, follow = true, camY = 0;
+const MM = { x: VW - 336, y: 8, w: 320, h: 120, k: 0.2 };
+const mirror = x => (mySide === 1 ? W - x : x);          // правый игрок видит карту зеркально
+const rawP = (m, wy) => ({ x: m * KX, y: wy * KY + OFFY });   // зеркальные мировые -> экран без камеры
+const Pm = (m, wy) => { const r = rawP(m, wy); return { x: r.x - camX, y: r.y - camY }; };
+const P = (wx, wy) => Pm(mirror(wx), wy);
+function unP(px, py) {                                    // экран -> мировые (x, y) на земле
+  return { x: mirror((px + camX) / KX), y: (py + camY - OFFY) / KY };
+}
+const mapW = () => W * KX, mapH = () => L.worldH * KY + OFFY + 40;
+const clampCam = () => { camX = Math.max(0, Math.min(Math.max(0, mapW() - VW), camX)); camY = Math.max(0, Math.min(Math.max(0, mapH() - VH), camY)); };
+
+function slotPos(side, i) {
+  const col = i % L.baseCols, row = Math.floor(i / L.baseCols);
+  const off = L.baseX0 + col * L.cell + L.cell / 2;
+  const top = L.laneY - L.laneHalf, bot = L.laneY + L.laneHalf;
+  const y = row < L.rowsPerSide ? top - (L.rowsPerSide - row) * L.cell + L.cell / 2 : bot + (row - L.rowsPerSide) * L.cell + L.cell / 2;
+  return { x: side === 0 ? off : W - off, y };
+}
+function canvasPt(e) {
+  const r = cv.getBoundingClientRect();
+  return { px: (e.clientX - r.left) * (VW / r.width), py: (e.clientY - r.top) * (VH / r.height) };
+}
+function toWorld(e) { const c = canvasPt(e); const w = unP(c.px, c.py); return { x: w.x, y: w.y, px: c.px, py: c.py }; }
+function slotAt(side, p) {
+  for (let i = 0; i < S.slots; i++) { const s = slotPos(side, i); if (Math.abs(p.x - s.x) <= L.cell / 2 && Math.abs(p.y - s.y) <= L.cell / 2) return i; }
+  return -1;
+}
+const inMM = c => c.px >= MM.x && c.px <= MM.x + MM.w && c.py >= MM.y && c.py <= MM.y + MM.h;
+function mmPan(c) {
+  const m = (c.px - MM.x) / MM.k, wy = (c.py - MM.y) / MM.k, r = rawP(m, wy);
+  camX = r.x - VW / 2; camY = r.y - VH / 2; clampCam(); follow = false;
+}
+let mmDrag = false;
+
+cv.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (!snap) return;
+  if (mode) { setMode(null); return; }
+  if (inMM(canvasPt(e))) return;
+  const own = bldAt(e, true);
+  if (own && own.hp < own.mh) { send({ t: 'cmd', c: { c: 'repair', id: own.id } }); return; }
+  const p = toWorld(e);
+  send({ t: 'cmd', c: { c: 'hgo', x: p.x, y: p.y } });
+  pushFx({ k: 'mv', x: p.x, y: p.y });
+});
+cv.addEventListener('pointermove', e => {
+  const w = toWorld(e); mouse = { x: w.x, y: w.y, px: w.px, py: w.py, in: true };
+  if (mmDrag) mmPan(canvasPt(e));
+});
+cv.addEventListener('pointerleave', () => { mouse.in = false; mmDrag = false; atkHeld = false; });
+window.addEventListener('pointerup', () => { mmDrag = false; atkHeld = false; });
+// здания объёмные: для выбора смещаем точку клика вниз к основанию
+const bldAt = (e, own) => { const c = canvasPt(e); return snap.b.find(b => (b.o === mySide) === own && (() => { const s = slotPos(b.o, b.s), q = P(s.x, s.y); return Math.abs(c.px - q.x) <= 26 && c.py >= q.y - 52 && c.py <= q.y + 14; })()); };
+cv.addEventListener('pointerdown', e => {
+  if (!snap || e.button !== 0) return;
+  const c = canvasPt(e);
+  if (inMM(c)) { mmDrag = true; mmPan(c); return; }
+  const p = toWorld(e);
+  if (mode) {
+    if (mode.k === 'place') {
+      const i = slotAt(mySide, p);
+      if (i < 0) { toast('Стройте в клетках своей базы'); return; }
+      send({ t: 'cmd', c: { c: 'build', b: mode.type, slot: i } });
+      if (!e.shiftKey) setMode(null);
+    } else if (mode.k === 'heal') { send({ t: 'cmd', c: { c: 'ability', id: mode.id, x: p.x } }); setMode(null); }
+    else if (mode.k === 'drum') { send({ t: 'cmd', c: { c: 'item', item: 'drum', x: p.x } }); setMode(null); }
+    else if (mode.k === 'salve') {
+      const q = unP(c.px, c.py + 10);
+      let best = null, bd = 45;
+      for (const u of snap.u) if (u[1] === mySide) { const d = Math.hypot(u[3] - q.x, u[4] - q.y); if (d < bd) { bd = d; best = u[0]; } }
+      const mh = snap.hr[mySide];
+      if (!mh.d && Math.hypot(mh.x - q.x, mh.y - q.y) < bd) best = 'h' + mySide;
+      if (best !== null) { send({ t: 'cmd', c: { c: 'item', item: 'salve', target: best } }); setMode(null); } else toast('Нужен свой юнит или герой');
+    }
+    return;
+  }
+  const b = bldAt(e, true);
+  if (b) { selected = b.id; selSig = ''; renderSel(); return; }
+  atkHeld = true;
+});
+function bldHit(b, p) { const s = slotPos(b.o, b.s); return Math.abs(p.x - s.x) <= L.cell / 2 && Math.abs(p.y - s.y) <= L.cell / 2; }
+
+// ---------- эффекты ----------
+function pushFx(e) {
+  fx.push({ ...e, t0: performance.now(), dur: { a: 180, d: 400, t: 900, h: 600, boom: 500, ring: 600, ult: 900, mv: 600, nova: 600, lust: 700, lvl: 1200, slash: 240, burst: 750 }[e.k] || 400 });
+  if (fx.length > 300) fx.splice(0, fx.length - 300);
+}
+
+// ---------- отрисовка ----------
+const ctx = cv.getContext('2d');
+const teamCol = o => (o === mySide ? '#3b82f6' : '#ef4444');
+const teamDark = o => (o === mySide ? '#1e40af' : '#991b1b');
+const baseEdge = () => L.baseX0 + L.baseCols * L.cell + 10;
+
+function poly(pts, fill, stroke, lw) {
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); ctx.lineWidth = 1; }
+}
+// прямоугольник на земле в обычных мировых координатах
+function groundQuad(x0, x1, y0, y1, fill, stroke, lw) {
+  const m0 = mirror(x0), m1 = mirror(x1), a = Math.min(m0, m1), b = Math.max(m0, m1);
+  poly([Pm(a, y0), Pm(b, y0), Pm(b, y1), Pm(a, y1)], fill, stroke, lw);
+}
+const lift = (p, h) => ({ x: p.x, y: p.y - h });
+// объёмный блок: передняя стенка + крыша; mc, wc — центр в зеркальных координатах
+function box(mc, wc, dx, dy, h, top, left, right) {
+  const b0 = Pm(mc - dx, wc - dy), b1 = Pm(mc + dx, wc - dy), f0 = Pm(mc - dx, wc + dy), f1 = Pm(mc + dx, wc + dy);
+  poly([f0, f1, lift(f1, h), lift(f0, h)], left, 'rgba(0,0,0,.4)');
+  poly([lift(b0, h), lift(b1, h), lift(f1, h), lift(f0, h)], top, 'rgba(0,0,0,.45)');
+  return Pm(mc, wc);
+}
+
+function drawBg() {
+  ctx.fillStyle = '#15201a'; ctx.fillRect(0, 0, VW, VH);
+  groundQuad(0, W, 0, L.worldH, '#4f8a3c', '#2d4f24', 2);
+  const t = 96;
+  for (let i = 0; i < W / t; i++) for (let j = 0; j < L.worldH / t; j++) {
+    if ((i + j) % 2) groundQuad(i * t, Math.min(W, (i + 1) * t), j * t, Math.min(L.worldH, (j + 1) * t), 'rgba(0,0,0,.06)');
+  }
+  for (const side of [0, 1]) {
+    groundQuad(side === 0 ? 0 : W - baseEdge(), side === 0 ? baseEdge() : W, 0, L.worldH, side === mySide ? 'rgba(59,130,246,.14)' : 'rgba(239,68,68,.14)', side === mySide ? 'rgba(96,165,250,.7)' : 'rgba(248,113,113,.7)', 2);
+  }
+  groundQuad(0, W, L.laneY - L.laneHalf, L.laneY + L.laneHalf, '#8a7650', '#5d4d30', 2);
+  for (const cd of DATA.camps) {
+    if (cd.y < L.laneY) groundQuad(cd.x - 24, cd.x + 24, cd.y, L.laneY - L.laneHalf, '#8a7650');
+    else groundQuad(cd.x - 24, cd.x + 24, L.laneY + L.laneHalf, cd.y, '#8a7650');
+    groundQuad(cd.x - 60, cd.x + 60, cd.y - 40, cd.y + 40, '#6b5b3d', '#4a3d28', 2);
+  }
+  for (let x = 120; x < W - 120; x += 90) groundQuad(x, x + 40, L.laneY - 2, L.laneY + 2, 'rgba(255,255,255,.18)');
+}
+
+function hpBar(x, y, w, hp, max) {
+  ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(x - w / 2, y, w, 5);
+  ctx.fillStyle = hp / max > .5 ? '#4ade80' : hp / max > .25 ? '#facc15' : '#ef4444';
+  ctx.fillRect(x - w / 2, y, w * Math.max(0, hp / max), 5);
+}
+function emoji(ch, x, y, size) { ctx.font = size + 'px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch, x, y); }
+
+function drawCastle(side) {
+  const mc = mirror(side === 0 ? L.castleX : W - L.castleX), wc = L.laneY, hp = snap.ch[side];
+  const stone = ['#c0c4cc', '#8f95a1', '#a9aebb'];
+  for (const [ox, oy] of [[-1, -1], [1, -1]]) box(mc + ox * 48, wc + oy * 44, 13, 13, 78, teamCol(side), stone[1], stone[2]);
+  const c = box(mc, wc, 44, 40, 56, teamDark(side), stone[1], stone[2]);
+  poly([Pm(mc - 44, wc - 40), Pm(mc + 44, wc - 40), Pm(mc + 44, wc + 40), Pm(mc - 44, wc + 40)].map(p => lift(p, 56)), null, teamCol(side), 3);
+  for (const [ox, oy] of [[-1, 1], [1, 1]]) box(mc + ox * 48, wc + oy * 44, 13, 13, 78, teamCol(side), stone[1], stone[2]);
+  emoji('🏰', c.x, c.y - 70, 40);
+  hpBar(c.x, c.y - 120, 100, hp, S.castleHp);
+}
+
+function drawBuilding(b) {
+  const s = slotPos(b.o, b.s), d = DATA.buildings[b.ty], mc = mirror(s.x), wc = s.y, h = 30;
+  const c = box(mc, wc, 19, 19, h, teamCol(b.o), '#8f7e57', '#b8a572');
+  if (b.id === selected) { const f = [Pm(mc - 22, wc - 22), Pm(mc + 22, wc - 22), Pm(mc + 22, wc + 22), Pm(mc - 22, wc + 22)]; poly(f, 'rgba(74,222,128,.25)', '#4ade80', 3); }
+  emoji(d.icon, c.x, c.y - h - 2, 18);
+  hpBar(c.x, c.y - h - 28, 40, b.hp, b.mh);
+  if (b.rp) emoji('🔧', c.x + 22, c.y - h - 14 + Math.sin(performance.now() / 90) * 3, 14);
+  const f = Pm(mc + 19, wc + 19);
+  if (d.kind === 'spawner') { ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(f.x - 20, f.y + 4, 40, 4); ctx.fillStyle = '#38bdf8'; ctx.fillRect(f.x - 20, f.y + 4, 40 * b.pr, 4); }
+  else if (b.cd > 0) { ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(b.cd + 'с', f.x, f.y + 12); }
+}
+
+function cellPoly(s, inset) {
+  const m = mirror(s.x), h = L.cell / 2 - inset;
+  return [Pm(m - h, s.y - h), Pm(m + h, s.y - h), Pm(m + h, s.y + h), Pm(m - h, s.y + h)];
+}
+function drawSlotsOverlay() {
+  const placing = mode && mode.k === 'place';
+  const used = new Set(myBlds().map(b => b.s));
+  const hover = mouse.in && placing ? slotAt(mySide, mouse) : -1;
+  const d = placing && DATA.buildings[mode.type];
+  const ok = placing && canAfford(d.cost) && !(d.requires && !myBlds().some(b => b.ty === d.requires));
+  for (let i = 0; i < S.slots; i++) {
+    if (used.has(i)) continue;
+    const s = slotPos(mySide, i);
+    if (placing) poly(cellPoly(s, 1), i === hover ? (ok ? 'rgba(74,222,128,.55)' : 'rgba(239,68,68,.55)') : 'rgba(255,255,255,.10)', 'rgba(255,255,255,.4)');
+    else poly(cellPoly(s, 1), null, 'rgba(255,255,255,.10)');
+    if (i === hover) { const c = P(s.x, s.y); ctx.globalAlpha = .8; emoji(d.icon, c.x, c.y - 14, 24); ctx.globalAlpha = 1; }
+  }
+}
+
+const hdisp = [null, null];
+const myTg = () => snap.hr[mySide].tg;
+function ring(c, r) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(c.x, c.y, r, r * 0.45, 0, 0, 7); ctx.stroke(); ctx.lineWidth = 1; }
+function drawHero(side, dt) {
+  const t = snap.hr[side];
+  if (t.d) { hdisp[side] = null; return; }
+  let d = hdisp[side]; if (!d) d = hdisp[side] = { x: t.x, y: t.y };
+  const k = Math.min(1, dt * 14); d.x += (t.x - d.x) * k; d.y += (t.y - d.y) * k;
+  const c = P(d.x, d.y), def = DATA.heroes[factions[side]];
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 15, 6, 0, 0, 7); ctx.fill();
+  if (myTg() === 'h' + side) ring(c, 22);
+  ctx.fillStyle = teamCol(side); ctx.beginPath(); ctx.arc(c.x, c.y - 17, 17, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#facc15'; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
+  emoji(def.icon, c.x, c.y - 16, 22);
+  hpBar(c.x, c.y - 46, 46, t.hp, t.mh);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText((side === mySide ? 'Вы' : names[side]) + ' · ' + t.lv, c.x, c.y - 54);
+  if (side === mySide && t.cb > 1) { ctx.fillStyle = '#fb923c'; ctx.font = 'bold 14px sans-serif'; ctx.fillText('COMBO ' + t.cb, c.x, c.y - 70); }
+  if (t.st) emoji('💫', c.x, c.y - 66, 16);
+}
+function drawNeutral(n, dt) {
+  const [id, camp, ty, x, y, hp, st] = n;
+  let d = disp.get(id);
+  if (!d) { d = { x, y }; disp.set(id, d); }
+  const k = Math.min(1, dt * 14); d.x += (x - d.x) * k; d.y += (y - d.y) * k;
+  const def = DATA.neutrals[ty], c = P(d.x, d.y), r = ty === 'golem' ? 18 : 12;
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, r, r * .45, 0, 0, 7); ctx.fill();
+  if (myTg() === id) ring(c, r + 8);
+  ctx.fillStyle = '#9ca3af'; ctx.beginPath(); ctx.arc(c.x, c.y - r, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#374151'; ctx.stroke();
+  emoji(def.icon, c.x, c.y - r, r + 3);
+  if (hp < def.hp) hpBar(c.x, c.y - r * 2 - 8, 30, hp, def.hp);
+  if (st) emoji('💫', c.x, c.y - r * 2 - 16, 14);
+}
+
+function drawCamps() {
+  DATA.camps.forEach((cd, i) => {
+    const c = P(cd.x, cd.y), cp = snap.cp[i], ct = DATA.campTypes[cd.type];
+    ctx.fillStyle = '#e5e7eb'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(cp.n ? ct.name : ct.name + ' · ' + cp.rt + 'с', c.x, c.y + 34);
+  });
+}
+
+function drawUnit(u, dt) {
+  const [id, o, ty, x, y, hp, fl] = u;
+  let d = disp.get(id);
+  if (!d) { d = { x, y }; disp.set(id, d); }
+  const k = Math.min(1, dt * 14); d.x += (x - d.x) * k; d.y += (y - d.y) * k;
+  const def = DATA.units[ty], c = P(d.x, d.y);
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 11, 5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = teamCol(o); ctx.beginPath(); ctx.arc(c.x, c.y - 12, 12, 0, 7); ctx.fill();
+  ctx.strokeStyle = fl & 4 ? '#f97316' : fl & 8 ? '#34d399' : fl & 2 ? '#a78bfa' : fl & 1 ? '#facc15' : '#0b0f1a'; ctx.lineWidth = fl ? 3 : 1.5; ctx.stroke(); ctx.lineWidth = 1;
+  emoji(def.icon, c.x, c.y - 11, 14);
+  if (hp < def.hp) hpBar(c.x, c.y - 31, 26, hp, def.hp);
+}
+
+function drawFx(now) {
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const e = fx[i], a = (now - e.t0) / e.dur;
+    if (a >= 1) { fx.splice(i, 1); continue; }
+    if (e.k === 'a') {
+      const p1 = P(e.x1, e.y1), p2 = P(e.x2, e.y2);
+      ctx.globalAlpha = 1 - a;
+      if (e.r) { ctx.strokeStyle = e.c ? '#fde047' : '#fff'; ctx.lineWidth = e.c ? 3 : 1.5; const q = Math.min(1, a * 2.5); ctx.beginPath(); ctx.moveTo(p1.x, p1.y - 12); ctx.lineTo(p1.x + (p2.x - p1.x) * q, p1.y - 12 + (p2.y - p1.y) * q); ctx.stroke(); }
+      else { ctx.fillStyle = e.c ? '#fde047' : '#fff'; ctx.beginPath(); ctx.arc(p2.x, p2.y - 14, 3 + a * 8, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = 1; ctx.lineWidth = 1;
+    } else if (e.k === 'd') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.fillStyle = '#ddd'; ctx.beginPath(); ctx.arc(c.x, c.y - 10, 8 + a * 18, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    else if (e.k === 'boom') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.fillStyle = '#fb923c'; ctx.beginPath(); ctx.arc(c.x, c.y - 16, 10 + a * 40, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    else if (e.k === 'h') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; emoji('➕', c.x, c.y - 30 - a * 20, 16); ctx.globalAlpha = 1; }
+    else if (e.k === 't') { if (e.o === mySide) { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.fillStyle = '#facc15'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(e.s, c.x, c.y - 24 - a * 24); ctx.globalAlpha = 1; } }
+    else if (e.k === 'ring') { ctx.globalAlpha = 1 - a; groundQuad(e.x - S.areaRadius, e.x + S.areaRadius, L.laneY - 70, L.laneY + 70, 'rgba(255,255,255,.12)', e.c, 4); ctx.globalAlpha = 1; }
+    else if (e.k === 'mv') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(c.x, c.y, (4 + a * 14) * 1.6, (4 + a * 14) * .8, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'nova') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(c.x, c.y, (e.r || 110) * KX * (.3 + a * .7), (e.r || 110) * KY * (.3 + a * .7), 0, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(125,211,252,.25)'; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'lust') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#34d399'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(c.x, c.y, 220 * KX * (.2 + a * .8), 220 * KY * (.2 + a * .8), 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'slash') {
+      const pts = [P(e.x, e.y)], a0 = e.fin ? 0 : e.ang - Math.PI / 2, a1 = e.fin ? Math.PI * 2 : e.ang + Math.PI / 2;
+      for (let i = 0; i <= 18; i++) { const an = a0 + (a1 - a0) * i / 18; pts.push(P(e.x + Math.cos(an) * e.r, e.y + Math.sin(an) * e.r)); }
+      ctx.globalAlpha = (1 - a) * .75;
+      poly(pts, e.o === mySide ? (e.fin ? 'rgba(250,204,21,.5)' : 'rgba(255,255,255,.4)') : 'rgba(248,113,113,.45)', e.fin ? '#facc15' : '#fff', 2);
+      ctx.globalAlpha = 1;
+    }
+    else if (e.k === 'burst') { const c = P(e.x, e.y), q = .15 + a * .85; ctx.globalAlpha = 1 - a; ctx.fillStyle = e.o === mySide ? 'rgba(250,204,21,.35)' : 'rgba(239,68,68,.35)'; ctx.strokeStyle = '#fde047'; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(c.x, c.y, e.r * KX * q, e.r * KY * q, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1; }
+    else if (e.k === 'lvl') { const c = P(e.x, e.y); ctx.globalAlpha = 1 - a; ctx.fillStyle = '#facc15'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('LEVEL UP!', c.x, c.y - 60 - a * 30); ctx.globalAlpha = 1; }
+    else if (e.k === 'ult') { ctx.globalAlpha = (1 - a) * 0.25; ctx.fillStyle = e.o === mySide ? '#3b82f6' : '#ef4444'; ctx.fillRect(0, 0, VW, VH); ctx.globalAlpha = 1; }
+  }
+}
+
+function drawAimPreview() {
+  if (!mode || !mouse.in) return;
+  if (mode.k === 'heal' || mode.k === 'drum') {
+    const col = mode.k === 'heal' ? '#4ade80' : '#facc15';
+    groundQuad(mouse.x - S.areaRadius, mouse.x + S.areaRadius, L.laneY - 70, L.laneY + 70, col + '33', col, 3);
+  }
+}
+
+function drawMinimap() {
+  ctx.fillStyle = 'rgba(10,14,22,.8)'; ctx.fillRect(MM.x - 3, MM.y - 3, MM.w + 6, MM.h + 6);
+  ctx.fillStyle = '#3d6b30'; ctx.fillRect(MM.x, MM.y, MM.w, MM.h);
+  ctx.fillStyle = '#8a7650'; ctx.fillRect(MM.x, MM.y + (L.laneY - L.laneHalf) * MM.k, MM.w, L.laneHalf * 2 * MM.k);
+  const dot = (x, y, c, r) => { ctx.fillStyle = c; ctx.fillRect(MM.x + mirror(x) * MM.k - r, MM.y + y * MM.k - r, r * 2, r * 2); };
+  for (const s of [0, 1]) dot(s === 0 ? L.castleX : W - L.castleX, L.laneY, teamCol(s), 6);
+  for (const b of snap.b) { const s = slotPos(b.o, b.s); dot(s.x, s.y, teamCol(b.o), 2); }
+  for (const u of snap.u) dot(u[3], u[4], teamCol(u[1]), 1.5);
+  for (const cd of DATA.camps) dot(cd.x, cd.y, '#9ca3af', 3);
+  for (const s of [0, 1]) { const h = snap.hr[s]; if (!h.d) dot(h.x, h.y, '#facc15', 4); }
+  const c = unP(VW / 2, VH / 2); // центр камеры
+  ctx.strokeStyle = '#fff'; ctx.strokeRect(MM.x + mirror(c.x) * MM.k - 22, MM.y + c.y * MM.k - 12, 44, 24);
+}
+
+function updateCamera(dt) {
+  const sp = 700 * dt;
+  let px = 0, py = 0;
+  if (keys.has('arrowleft')) px -= sp;
+  if (keys.has('arrowright')) px += sp;
+  if (keys.has('arrowup')) py -= sp;
+  if (keys.has('arrowdown')) py += sp;
+  if (mouse.in && !inMM(mouse)) {
+    if (mouse.px < 20) px -= sp * .6; else if (mouse.px > VW - 20) px += sp * .6;
+    if (mouse.py < 20) py -= sp * .6; else if (mouse.py > VH - 20) py += sp * .6;
+  }
+  if (px || py) { camX += px; camY += py; follow = false; }
+  else if (follow && snap) {
+    const b = snap.hr[mySide], r = rawP(mirror(b.x), b.y), k = Math.min(1, dt * 4);
+    camX += (r.x - VW / 2 - camX) * k; camY += (r.y - VH / 2 - camY) * k;
+  }
+  clampCam();
+}
+
+let lastT = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (snap && !$('game').classList.contains('hidden')) {
+    updateCamera(dt);
+    ctx.clearRect(0, 0, VW, VH);
+    drawBg();
+    drawSlotsOverlay();
+    const items = [];
+    for (const s of [0, 1]) items.push({ y: L.laneY + 30, f: () => drawCastle(s) });
+    for (const b of snap.b) items.push({ y: slotPos(b.o, b.s).y + 19, f: () => drawBuilding(b) });
+    const seen = new Set();
+    for (const u of snap.u) { seen.add(u[0]); items.push({ y: u[4], f: () => drawUnit(u, dt) }); }
+    for (const n of snap.nu) { seen.add(n[0]); items.push({ y: n[4], f: () => drawNeutral(n, dt) }); }
+    for (const s of [0, 1]) items.push({ y: snap.hr[s].y, f: () => drawHero(s, dt) });
+    for (const id of disp.keys()) if (!seen.has(id)) disp.delete(id);
+    drawCamps();
+    items.sort((a, b) => a.y - b.y);
+    for (const it of items) it.f();
+    drawFx(now);
+    drawAimPreview();
+    drawMinimap();
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------- конец матча ----------
+function showEnd() {
+  const m = ended, box = $('endbox');
+  const title = m.winner === -1 ? '🤝 Ничья' : (m.winner === mySide ? '🏆 Победа!' : '💀 Поражение');
+  const st = side => m.stats[side];
+  const row = (n, f) => `<tr><td>${f(st(mySide))}</td><th>${n}</th><td>${f(st(1 - mySide))}</td></tr>`;
+  box.innerHTML = `<div class="card"><h1>${title}</h1><p>${m.reason}</p>
+    <table><tr><td><b>Вы</b></td><th></th><td><b>Соперник</b></td></tr>
+    <tr><td>${m.castles[mySide]}</td><th>Здоровье замка</th><td>${m.castles[1 - mySide]}</td></tr>
+    ${row('Убито юнитов', s => s.kills)}${row('Потеряно юнитов', s => s.lost)}${row('Разрушено зданий', s => s.bKills)}${row('KO героя', s => s.ko)}${row('Убито героев', s => s.heroKills)}${row('Зачищено лагерей', s => s.camps)}${row('Построено зданий', s => s.built)}${row('Золота заработано', s => s.gold)}</table>
+    <div class="dim small">Длительность: ${Math.floor(m.time / 60)}:${String(m.time % 60).padStart(2, '0')}</div>
+    <div class="row" style="justify-content:center"><button class="btn primary" id="bRematch">Реванш</button><button class="btn" id="bMenu">В меню</button></div></div>`;
+  box.classList.remove('hidden');
+  $('bRematch').onclick = () => send({ t: 'rematch' });
+  $('bMenu').onclick = leaveRoom;
+}
+
+// ---------- старт ----------
+(async function init() {
+  DATA = await (await fetch('/data.json')).json();
+  S = DATA.settings; L = S.layout; W = S.world;
+  try { $('name').value = localStorage.getItem('cfName') || ''; } catch {}
+  const q = new URLSearchParams(location.search).get('room');
+  if (q) $('codeIn').value = q.toUpperCase().slice(0, 4);
+  connect();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
